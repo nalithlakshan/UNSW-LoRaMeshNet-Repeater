@@ -1,0 +1,69 @@
+# STM32CubeIDE / STM32CubeMX
+*.launch
+.metadata/
+.settings/
+.cproject
+.project
+STM32CubeIDE/
+
+# Build artifacts and binaries
+Debug/
+Release/
+*.o
+*.d
+*.elf
+*.hex
+*.bin
+*.map
+*.list
+*.axf
+*.srec
+*.ihex
+
+# Temporary files
+*.tmp
+*.swp
+*.bak
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE and editor files
+.vscode/
+.idea/
+*.suo
+*.user
+*.aps
+*.pch
+*.vspscc
+*_i.c
+*_p.c
+*.ncb
+*.suo
+*.tlb
+*.tlh
+*.tmp_proj
+*.log
+*.vspscc
+*.vssscc
+.build
+.svn
+
+# Logs and debug
+*.log
+debug.log
+
+# Backup files
+*.orig
+*.rej
+
+# STM32 specific
+STM32CubeExpansion_*/
+STM32Cube_FW_*/
