@@ -25,9 +25,11 @@
 #include "radio.h"
 
 /* USER CODE BEGIN Includes */
-#include "stm32_timer.h"	//NLU$$$$$$$
-#include "stm32_seq.h"		//NLU$$$$$$$
-#include <string.h>			//NLU$$$$$$$
+#include "main.h"
+#include "stm32_timer.h"
+#include "stm32_seq.h"
+#include <string.h>
+#include "radio_driver.h"
 #include "utilities_def.h"
 /* USER CODE END Includes */
 
@@ -43,9 +45,12 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define MAX_APP_BUFFER_SIZE          255	//NLU$$$$$$$
-#define RX_TIMEOUT_VALUE             3000	//NLU$$$$$$$
-#define TX_TIMEOUT_VALUE             3000	//NLU$$$$$$$
+#define MAX_APP_BUFFER_SIZE          255
+#define RX_TIMEOUT_VALUE             3000
+#define TX_TIMEOUT_VALUE             3000
+#define CAD_SCAN_PERIOD_MS           1000
+#define CAD_DET_PEAK                 28
+#define CAD_DET_MIN                  14
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -58,9 +63,20 @@
 static RadioEvents_t RadioEvents;
 
 /* USER CODE BEGIN PV */
-static UTIL_TIMER_Object_t TxTimer;				//NLU$$$$$$$
-static uint8_t TxBuf[] = "Hello World!\r\n";	//NLU$$$$$$$
-static uint8_t TxCounter = 0;					//NLU$$$$$$$
+// PV for periodic transmission example
+static UTIL_TIMER_Object_t TxTimer;
+static uint8_t TxBuf[] = "Hello World!\r\n";
+static uint8_t TxCounter = 0;
+
+// PV for periodic CAD scan example
+static UTIL_TIMER_Object_t CadTimer;
+static uint32_t CadScanCounter = 0;
+
+// PV for Rx data
+static uint8_t RxTextBuf[MAX_APP_BUFFER_SIZE];
+uint16_t RxBufferSize = 0;  // Last  Received Buffer Size
+int8_t RssiValue = 0;       // Last  Received packer Rssi
+int8_t SnrValue = 0;        // Last  Received packer SNR (in Lora modulation)
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -94,14 +110,26 @@ static void OnRxTimeout(void);
 static void OnRxError(void);
 
 /* USER CODE BEGIN PFP */
-static void TxTimerCb(void *context);	//NLU$$$$$$$
+
+/**
+  * @brief Function executed on Radio CAD Done event
+  * @param  channelActivityDetected true when activity is detected on the channel
+  */
+static void OnCadDone(bool channelActivityDetected);
+
+static void TxTimerCb(void *context);
+static void TxTask(void);
+
+static void CadTimerCb(void *context);
+static void CAD_Scan(void);
+
 /* USER CODE END PFP */
 
 /* Exported functions ---------------------------------------------------------*/
 void SubghzApp_Init(void)
 {
   /* USER CODE BEGIN SubghzApp_Init_1 */
-	APP_LOG(TS_OFF, VLEVEL_M, "SubGHz App Started!\r\n");
+  APP_LOG(TS_OFF, VLEVEL_M, "SubGHz App Started!\r\n");
 
   /* USER CODE END SubghzApp_Init_1 */
 
@@ -111,35 +139,49 @@ void SubghzApp_Init(void)
   RadioEvents.TxTimeout = OnTxTimeout;
   RadioEvents.RxTimeout = OnRxTimeout;
   RadioEvents.RxError = OnRxError;
+  RadioEvents.CadDone = OnCadDone;
 
   Radio.Init(&RadioEvents);
 
   /* USER CODE BEGIN SubghzApp_Init_2 */
 
   /* Radio Set frequency */
-    Radio.SetChannel(RF_FREQUENCY);
+  Radio.SetChannel(RF_FREQUENCY);
 
-	#if ((USE_MODEM_LORA == 1) && (USE_MODEM_FSK == 0))							//NLU$$$$$$$
-	  Radio.Sleep();															//NLU$$$$$$$
-	  Radio.SetChannel(RF_FREQUENCY);											//NLU$$$$$$$
-	  Radio.SetTxConfig(MODEM_LORA, TX_OUTPUT_POWER, 0, LORA_BANDWIDTH,			//NLU$$$$$$$
-						LORA_SPREADING_FACTOR, LORA_CODINGRATE,					//NLU$$$$$$$
-						LORA_PREAMBLE_LENGTH, LORA_FIX_LENGTH_PAYLOAD_ON,		//NLU$$$$$$$
-						true, 0, 0, LORA_IQ_INVERSION_ON, TX_TIMEOUT_VALUE);	//NLU$$$$$$$
-	  Radio.SetMaxPayloadLength(MODEM_LORA, MAX_APP_BUFFER_SIZE);				//NLU$$$$$$$
-	#elif ((USE_MODEM_LORA == 0) && (USE_MODEM_FSK == 1))						//NLU$$$$$$$
-	  Radio.SetTxConfig(MODEM_FSK, TX_OUTPUT_POWER, FSK_FDEV, 0,				//NLU$$$$$$$
-						FSK_DATARATE, 0,										//NLU$$$$$$$
-						FSK_PREAMBLE_LENGTH, FSK_FIX_LENGTH_PAYLOAD_ON,			//NLU$$$$$$$
-						true, 0, 0, 0, TX_TIMEOUT_VALUE);						//NLU$$$$$$$
-	  Radio.SetMaxPayloadLength(MODEM_FSK, MAX_APP_BUFFER_SIZE);				//NLU$$$$$$$
-	#else																		//NLU$$$$$$$
-	#error "Please define a modulation in the subghz_phy_app.h file."			//NLU$$$$$$$
-	#endif /* USE_MODEM_LORA | USE_MODEM_FSK */									//NLU$$$$$$$
+#if ((USE_MODEM_LORA == 1) && (USE_MODEM_FSK == 0))
+  Radio.SetChannel(RF_FREQUENCY);
+  Radio.SetTxConfig(MODEM_LORA, TX_OUTPUT_POWER, 0, LORA_BANDWIDTH,
+                    LORA_SPREADING_FACTOR, LORA_CODINGRATE,
+                    LORA_PREAMBLE_LENGTH, LORA_FIX_LENGTH_PAYLOAD_ON,
+                    true, 0, 0, LORA_IQ_INVERSION_ON, TX_TIMEOUT_VALUE);
+  Radio.SetRxConfig(MODEM_LORA, LORA_BANDWIDTH, LORA_SPREADING_FACTOR,
+                    LORA_CODINGRATE, 0, LORA_PREAMBLE_LENGTH,
+                    LORA_SYMBOL_TIMEOUT, LORA_FIX_LENGTH_PAYLOAD_ON, 0,
+                    true, 0, 0, LORA_IQ_INVERSION_ON, false);
+  SUBGRF_SetCadParams(LORA_CAD_02_SYMBOL, CAD_DET_PEAK, CAD_DET_MIN,
+                      LORA_CAD_RX, 0);
+  Radio.SetMaxPayloadLength(MODEM_LORA, MAX_APP_BUFFER_SIZE);
+  Radio.Sleep();
+#elif ((USE_MODEM_LORA == 0) && (USE_MODEM_FSK == 1))
+  Radio.SetTxConfig(MODEM_FSK, TX_OUTPUT_POWER, FSK_FDEV, 0,
+                    FSK_DATARATE, 0,
+                    FSK_PREAMBLE_LENGTH, FSK_FIX_LENGTH_PAYLOAD_ON,
+                    true, 0, 0, 0, TX_TIMEOUT_VALUE);
+  Radio.SetMaxPayloadLength(MODEM_FSK, MAX_APP_BUFFER_SIZE);
+#else
+#error "Please define a modulation in the subghz_phy_app.h file."
+#endif /* USE_MODEM_LORA | USE_MODEM_FSK */
+
+  UTIL_SEQ_RegTask((1U << CFG_SEQ_Task_LoRaTx), 0, TxTask);
+  UTIL_SEQ_RegTask((1U << CFG_SEQ_Task_LoRaCadScan), 0, CAD_Scan);
 
   /* Periodic TX every 2000 ms */
-    UTIL_TIMER_Create(&TxTimer, 2000, UTIL_TIMER_PERIODIC, TxTimerCb, NULL);	//NLU$$$$$$$
-    UTIL_TIMER_Start(&TxTimer);													//NLU$$$$$$$
+  UTIL_TIMER_Create(&TxTimer, 5000, UTIL_TIMER_PERIODIC, TxTimerCb, NULL);
+  // UTIL_TIMER_Start(&TxTimer);
+
+  /* Periodic LoRa CAD scan every 1000 ms */
+  UTIL_TIMER_Create(&CadTimer, CAD_SCAN_PERIOD_MS, UTIL_TIMER_PERIODIC, CadTimerCb, NULL);
+  UTIL_TIMER_Start(&CadTimer);
 
   /* USER CODE END SubghzApp_Init_2 */
 }
@@ -152,47 +194,122 @@ void SubghzApp_Init(void)
 static void OnTxDone(void)
 {
   /* USER CODE BEGIN OnTxDone */
-	APP_LOG(TS_OFF, VLEVEL_M, "TX done\r\n");	//NLU$$$$$$$
+  APP_LOG(TS_OFF, VLEVEL_M, "TX done\r\n");
+  Radio.SetChannel(RF_FREQUENCY);
+  Radio.Sleep();
   /* USER CODE END OnTxDone */
 }
 
 static void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t LoraSnr_FskCfo)
 {
   /* USER CODE BEGIN OnRxDone */
-	APP_LOG(TS_OFF, VLEVEL_M, "RX done\r\n");	//NLU$$$$$$$
+
+  /* Clear BufferRx*/
+  memset(RxTextBuf, 0, MAX_APP_BUFFER_SIZE);
+
+  /* Record payload size*/
+  RxBufferSize = size;
+  if (RxBufferSize <= MAX_APP_BUFFER_SIZE)
+  {
+    memcpy(RxTextBuf, payload, RxBufferSize);
+  }
+
+  APP_LOG(TS_OFF, VLEVEL_M, "RX done, size=%u, RSSI=%d, SNR=%d, payload=\"%s\"\r\n",
+          size, rssi, LoraSnr_FskCfo, RxTextBuf);
+
+  // Repeating the received packet after receiving it
+  APP_LOG(TS_OFF, VLEVEL_M, "Repeating the received packet\r\n");
+  Radio.SetChannel(RF_FREQUENCY+250000);
+  Radio.Send(payload, size);
+  
   /* USER CODE END OnRxDone */
 }
 
 static void OnTxTimeout(void)
 {
   /* USER CODE BEGIN OnTxTimeout */
-	APP_LOG(TS_OFF, VLEVEL_M, "TX timeout\r\n");	//NLU$$$$$$$
+  APP_LOG(TS_OFF, VLEVEL_M, "TX timeout\r\n");
   /* USER CODE END OnTxTimeout */
 }
 
 static void OnRxTimeout(void)
 {
   /* USER CODE BEGIN OnRxTimeout */
-	APP_LOG(TS_OFF, VLEVEL_M, "RX timeout\r\n");	//NLU$$$$$$$
+  APP_LOG(TS_OFF, VLEVEL_M, "RX timeout\r\n");
+  Radio.Sleep();
   /* USER CODE END OnRxTimeout */
 }
 
 static void OnRxError(void)
 {
   /* USER CODE BEGIN OnRxError */
-	APP_LOG(TS_OFF, VLEVEL_M, "RX Error\r\n");	//NLU$$$$$$$
+  APP_LOG(TS_OFF, VLEVEL_M, "RX Error\r\n");
+  Radio.Sleep();
   /* USER CODE END OnRxError */
 }
 
 /* USER CODE BEGIN PrFD */
-static void TxTimerCb(void *context)					//NLU$$$$$$$
-{														//NLU$$$$$$$
-  (void)context;										//NLU$$$$$$$
-  HAL_GPIO_TogglePin(LED1_1_GPIO_Port, LED1_1_Pin);		//NLU$$$$$$$
-  TxCounter = TxCounter +1;								//NLU$$$$$$$
-  APP_LOG(TS_OFF, VLEVEL_M, "TX counter = \r\n");	//NLU$$$$$$$
-  Radio.Send(TxBuf, 64);		//NLU$$$$$$$
-//  UTIL_TIMER_Start(&TxTimer);							//NLU$$$$$$$
-}														//NLU$$$$$$$
 
+static void TxTimerCb(void *context)
+{
+  (void)context;
+  APP_LOG(TS_OFF, VLEVEL_M, "TxTimer Expired\r\n");
+  UTIL_SEQ_SetTask((1U << CFG_SEQ_Task_LoRaTx), CFG_SEQ_Prio_0);
+}
+
+static void TxTask(void)
+{
+//  HAL_GPIO_TogglePin(LED1_1_GPIO_Port, LED1_1_Pin);
+  if (Radio.GetStatus() != RF_IDLE)
+  {
+    APP_LOG(TS_OFF, VLEVEL_M, "TX skipped, radio busy\r\n");
+    return;
+  }
+
+  TxCounter = TxCounter + 1U;
+  APP_LOG(TS_OFF, VLEVEL_M, "TX counter = %u\r\n", TxCounter);
+  Radio.Send(TxBuf, PAYLOAD_LEN);
+  // int i = 0;
+  // while(i<10000000){
+	//   i = i+1;
+  // }
+}
+
+static void OnCadDone(bool channelActivityDetected)
+{
+  /* USER CODE BEGIN OnCadDone */
+  APP_LOG(TS_OFF, VLEVEL_M, "CAD done: %s\r\n",
+          channelActivityDetected ? "activity detected" : "channel clear");
+
+  if (channelActivityDetected == false)
+  {
+    Radio.Sleep();
+  }
+  else
+  {
+    // Channel activity detected, we can decide to receive or transmit
+    // For example, we can start receiving
+    Radio.Rx(RX_TIMEOUT_VALUE);
+  }
+  /* USER CODE END OnCadDone */
+}
+
+static void CadTimerCb(void *context)
+{
+  (void)context;
+  UTIL_SEQ_SetTask((1U << CFG_SEQ_Task_LoRaCadScan), CFG_SEQ_Prio_0);
+}
+
+static void CAD_Scan(void)
+{
+  if (Radio.GetStatus() != RF_IDLE)
+  {
+    APP_LOG(TS_OFF, VLEVEL_M, "CAD skipped, radio busy\r\n");
+    return;
+  }
+
+  CadScanCounter++;
+  APP_LOG(TS_OFF, VLEVEL_M, "CAD scan #%u\r\n", (unsigned int)CadScanCounter);
+  Radio.StartCad();
+}
 /* USER CODE END PrFD */

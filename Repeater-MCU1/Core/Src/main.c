@@ -53,12 +53,12 @@
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 /* USER CODE BEGIN PFP */
-static void OnledEvent(void *context);
+
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-static UTIL_TIMER_Object_t timerLed;
+
 /* USER CODE END 0 */
 
 /**
@@ -91,12 +91,10 @@ int main(void)
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_DMA_Init();
-  MX_USART1_UART_Init();
-  MX_RTC_Init();
   MX_SubGHz_Phy_Init();
+  MX_USART1_UART_Init();
+//  MX_RTC_Init();
   /* USER CODE BEGIN 2 */
-//  UTIL_TIMER_Create(&timerLed, 1000, UTIL_TIMER_ONESHOT, OnledEvent, NULL);
-//  UTIL_TIMER_Start(&timerLed);
 
   /* USER CODE END 2 */
 
@@ -171,12 +169,7 @@ void SystemClock_Config(void)
 }
 
 /* USER CODE BEGIN 4 */
-//static void OnledEvent(void *context)
-//{
-//  HAL_GPIO_TogglePin(LED1_1_GPIO_Port, LED1_1_Pin); /* LED_GREEN */
-//  HAL_GPIO_TogglePin(LED2_1_GPIO_Port, LED2_1_Pin); /* LED_RED */
-//  UTIL_TIMER_Start(&timerLed);
-//}
+
 /* USER CODE END 4 */
 
 /**

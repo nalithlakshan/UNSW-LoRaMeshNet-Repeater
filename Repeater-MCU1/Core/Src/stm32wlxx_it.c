@@ -56,6 +56,7 @@
 
 /* External variables --------------------------------------------------------*/
 extern RTC_HandleTypeDef hrtc;
+extern SUBGHZ_HandleTypeDef hsubghz;
 extern DMA_HandleTypeDef hdma_usart1_tx;
 extern UART_HandleTypeDef huart1;
 /* USER CODE BEGIN EV */
@@ -254,6 +255,20 @@ void RTC_Alarm_IRQHandler(void)
   /* USER CODE BEGIN RTC_Alarm_IRQn 1 */
 
   /* USER CODE END RTC_Alarm_IRQn 1 */
+}
+
+/**
+  * @brief This function handles SUBGHZ Radio Interrupt.
+  */
+void SUBGHZ_Radio_IRQHandler(void)
+{
+  /* USER CODE BEGIN SUBGHZ_Radio_IRQn 0 */
+
+  /* USER CODE END SUBGHZ_Radio_IRQn 0 */
+  HAL_SUBGHZ_IRQHandler(&hsubghz);
+  /* USER CODE BEGIN SUBGHZ_Radio_IRQn 1 */
+
+  /* USER CODE END SUBGHZ_Radio_IRQn 1 */
 }
 
 /* USER CODE BEGIN 1 */
