@@ -1,4 +1,3 @@
-/* USER CODE BEGIN Header */
 /**
   ******************************************************************************
   * @file    radio_conf.h
@@ -7,16 +6,16 @@
   ******************************************************************************
   * @attention
   *
-  * Copyright (c) 2026 STMicroelectronics.
-  * All rights reserved.
+  * <h2><center>&copy; Copyright (c) 2020 STMicroelectronics.
+  * All rights reserved.</center></h2>
   *
-  * This software is licensed under terms that can be found in the LICENSE file
-  * in the root directory of this software component.
-  * If no LICENSE file comes with this software, it is provided AS-IS.
+  * This software component is licensed by ST under Ultimate Liberty license
+  * SLA0044, the "License"; You may not use this file except in compliance with
+  * the License. You may obtain a copy of the License at:
+  *                             www.st.com/SLA0044
   *
   ******************************************************************************
   */
-/* USER CODE END Header */
 
 /* Define to prevent recursive inclusion -------------------------------------*/
 #ifndef __RADIO_CONF_H__
@@ -29,7 +28,7 @@ extern "C" {
 /* Includes ------------------------------------------------------------------*/
 #include "platform.h"
 #include "subghz.h"
-#include "stm32_mem.h"       /* RADIO_MEMSET8 def in this file */
+#include "stm32_mem.h"
 #include "mw_log_conf.h"     /* mw trace conf */
 #include "radio_board_if.h"  /* low layer api (bsp) */
 #include "utilities_def.h"  /* low layer api (bsp) */
@@ -44,10 +43,23 @@ extern "C" {
 /* USER CODE END ET */
 
 /* Exported constants --------------------------------------------------------*/
+/**
+  * @brief Set RX pin to high or low level
+  */
+// #define DBG_GPIO_RADIO_RX(set_rst) PROBE_GPIO_##set_rst##_LINE(PROBE_LINE1_PORT, PROBE_LINE1_PIN);
+
+/**
+  * @brief Set TX pin to high or low level
+  */
+// #define DBG_GPIO_RADIO_TX(set_rst) PROBE_GPIO_##set_rst##_LINE(PROBE_LINE2_PORT, PROBE_LINE2_PIN);
+
+/**
+  * @brief Max payload buffer size
+  */
+#define RADIO_RX_BUF_SIZE          255
 
 /**
   * @brief drive value used anytime radio is NOT in TX low power mode
-  * @note override the default configuration of radio_driver.c
   */
 #define SMPS_DRIVE_SETTING_DEFAULT  SMPS_DRV_40
 
@@ -55,41 +67,24 @@ extern "C" {
   * @brief drive value used anytime radio is in TX low power mode
   *        TX low power mode is the worst case because the PA sinks from SMPS
   *        while in high power mode, current is sunk directly from the battery
-  * @note override the default configuration of radio_driver.c
   */
 #define SMPS_DRIVE_SETTING_MAX      SMPS_DRV_60
 
 /**
-  * @brief Provides the frequency of the chip running on the radio and the frequency step
-  * @remark These defines are used for computing the frequency divider to set the RF frequency
-  * @note override the default configuration of radio_driver.c
+  * @brief in XO mode, set internal capacitor (from 0x00 to 0x2F starting 11.2pF with 0.47pF steps)
   */
-#define XTAL_FREQ                   ( 32000000UL )
+#define XTAL_DEFAULT_CAP_VALUE      0x10
 
 /**
-  * @brief in XO mode, set internal capacitor (from 0x00 to 0x2F starting 11.2pF with 0.47pF steps)
-  * @note override the default configuration of radio_driver.c
+  * @brief Frequency error (in Hz) can be compensated here.
+  *        warning XO frequency error generates (de)modulator sampling time error which can not be compensated
   */
-#define XTAL_DEFAULT_CAP_VALUE      ( 0x20UL )
+#define RF_FREQUENCY_ERROR          ((int32_t) 0)
 
 /**
   * @brief voltage of vdd tcxo.
-  * @note override the default configuration of radio_driver.c
   */
 #define TCXO_CTRL_VOLTAGE           TCXO_CTRL_1_7V
-
-/**
-  * @brief Radio maximum wakeup time (in ms)
-  * @note override the default configuration of radio_driver.c
-  */
-#define RF_WAKEUP_TIME              ( 1UL )
-
-/**
-  * @brief DCDC is enabled
-  * @remark this define is only used if the DCDC is present on the board
-  * @note override the default configuration of radio_driver.c
-  */
-#define DCDC_ENABLE                 ( 1UL )
 
 /* USER CODE BEGIN EC */
 
@@ -149,3 +144,5 @@ extern "C" {
 #endif
 
 #endif /* __RADIO_CONF_H__*/
+
+/************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/

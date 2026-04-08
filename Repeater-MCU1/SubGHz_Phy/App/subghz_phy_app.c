@@ -122,6 +122,7 @@ static void TxTask(void);
 
 static void CadTimerCb(void *context);
 static void CAD_Scan(void);
+static void PushBtnTask(void);
 
 /* USER CODE END PFP */
 
@@ -139,7 +140,6 @@ void SubghzApp_Init(void)
   RadioEvents.TxTimeout = OnTxTimeout;
   RadioEvents.RxTimeout = OnRxTimeout;
   RadioEvents.RxError = OnRxError;
-  RadioEvents.CadDone = OnCadDone;
 
   Radio.Init(&RadioEvents);
 
@@ -174,6 +174,7 @@ void SubghzApp_Init(void)
 
   UTIL_SEQ_RegTask((1U << CFG_SEQ_Task_LoRaTx), 0, TxTask);
   UTIL_SEQ_RegTask((1U << CFG_SEQ_Task_LoRaCadScan), 0, CAD_Scan);
+  UTIL_SEQ_RegTask((1U << CFG_SEQ_Task_BTN), 0, PushBtnTask);
 
   /* Periodic TX every 2000 ms */
   UTIL_TIMER_Create(&TxTimer, 5000, UTIL_TIMER_PERIODIC, TxTimerCb, NULL);
@@ -187,6 +188,13 @@ void SubghzApp_Init(void)
 }
 
 /* USER CODE BEGIN EF */
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
+{
+  if (GPIO_Pin == BTN_GPIO_EXTI9_Pin)
+  {
+    UTIL_SEQ_SetTask((1U << CFG_SEQ_Task_BTN), CFG_SEQ_Prio_0);
+  }
+}
 
 /* USER CODE END EF */
 
@@ -259,7 +267,7 @@ static void TxTimerCb(void *context)
 
 static void TxTask(void)
 {
-//  HAL_GPIO_TogglePin(LED1_1_GPIO_Port, LED1_1_Pin);
+//  HAL_GPIO_TogglePin(LED1_GPIO_Port, LED1_Pin);
   if (Radio.GetStatus() != RF_IDLE)
   {
     APP_LOG(TS_OFF, VLEVEL_M, "TX skipped, radio busy\r\n");
@@ -311,5 +319,10 @@ static void CAD_Scan(void)
   CadScanCounter++;
   APP_LOG(TS_OFF, VLEVEL_M, "CAD scan #%u\r\n", (unsigned int)CadScanCounter);
   Radio.StartCad();
+}
+
+static void PushBtnTask(void)
+{
+  HAL_GPIO_TogglePin(LED2_GPIO_Port, LED2_Pin);
 }
 /* USER CODE END PrFD */

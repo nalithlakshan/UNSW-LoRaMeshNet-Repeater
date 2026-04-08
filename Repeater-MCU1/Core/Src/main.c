@@ -19,6 +19,7 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "dma.h"
+#include "i2c.h"
 #include "rtc.h"
 #include "app_subghz_phy.h"
 #include "usart.h"
@@ -93,7 +94,8 @@ int main(void)
   MX_DMA_Init();
   MX_SubGHz_Phy_Init();
   MX_USART1_UART_Init();
-//  MX_RTC_Init();
+  // MX_RTC_Init();
+  MX_I2C2_Init();
   /* USER CODE BEGIN 2 */
 
   /* USER CODE END 2 */
@@ -103,13 +105,13 @@ int main(void)
   while (1)
   {
 //	  while(1){
-//	  HAL_GPIO_WritePin(LED1_1_GPIO_Port, LED1_1_Pin, 1);
-//	  HAL_GPIO_WritePin(LED2_1_GPIO_Port, LED2_1_Pin, 0);
+//	  HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, 1);
+//	  HAL_GPIO_WritePin(LED2_GPIO_Port, LED2_Pin, 0);
 //	  char msg[] = "This is an example only!!!\r\n";
 //	  HAL_UART_Transmit(&huart1, (uint8_t *)msg, sizeof(msg) - 1, HAL_MAX_DELAY);
 //	  HAL_Delay(1000);
-//	  HAL_GPIO_WritePin(LED1_1_GPIO_Port, LED1_1_Pin, 0);
-//	  HAL_GPIO_WritePin(LED2_1_GPIO_Port, LED2_1_Pin, 1);
+//	  HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, 0);
+//	  HAL_GPIO_WritePin(LED2_GPIO_Port, LED2_Pin, 1);
 //	  HAL_Delay(1000);
 //	  }
     /* USER CODE END WHILE */
