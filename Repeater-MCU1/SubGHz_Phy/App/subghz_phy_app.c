@@ -25,6 +25,7 @@
 #include "radio.h"
 
 /* USER CODE BEGIN Includes */
+#include "i2c.h"
 #include "main.h"
 #include "stm32_timer.h"
 #include "stm32_seq.h"
@@ -51,6 +52,9 @@
 #define CAD_SCAN_PERIOD_MS           1000
 #define CAD_DET_PEAK                 28
 #define CAD_DET_MIN                  14
+
+#define MCU2_I2C_ADDRESS_7BIT        12
+#define I2C_TX_TIMEOUT_MS            100
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -123,6 +127,7 @@ static void TxTask(void);
 static void CadTimerCb(void *context);
 static void CAD_Scan(void);
 static void PushBtnTask(void);
+static HAL_StatusTypeDef WakeMcu2AndSendString(const char *message);
 
 /* USER CODE END PFP */
 
@@ -183,6 +188,8 @@ void SubghzApp_Init(void)
   /* Periodic LoRa CAD scan every 1000 ms */
   UTIL_TIMER_Create(&CadTimer, CAD_SCAN_PERIOD_MS, UTIL_TIMER_PERIODIC, CadTimerCb, NULL);
   UTIL_TIMER_Start(&CadTimer);
+
+  HAL_GPIO_WritePin(WAKE_MCU2_GPIO_Port, WAKE_MCU2_Pin, GPIO_PIN_RESET);
 
   /* USER CODE END SubghzApp_Init_2 */
 }
@@ -321,8 +328,47 @@ static void CAD_Scan(void)
   Radio.StartCad();
 }
 
+static HAL_StatusTypeDef WakeMcu2AndSendString(const char *message)
+{
+  HAL_StatusTypeDef status;
+  uint16_t messageLength;
+
+  if (message == NULL)
+  {
+    return HAL_ERROR;
+  }
+
+  messageLength = (uint16_t)strlen(message);
+  if (messageLength == 0U)
+  {
+    return HAL_OK;
+  }
+
+  HAL_GPIO_WritePin(WAKE_MCU2_GPIO_Port, WAKE_MCU2_Pin, GPIO_PIN_SET);
+  HAL_Delay(10);
+  HAL_GPIO_WritePin(WAKE_MCU2_GPIO_Port, WAKE_MCU2_Pin, GPIO_PIN_RESET);
+  HAL_Delay(100);
+
+  status = HAL_I2C_Master_Transmit(&hi2c2,
+                                   (uint16_t)(MCU2_I2C_ADDRESS_7BIT << 1),
+                                   (uint8_t *)message,
+                                   messageLength,
+                                   I2C_TX_TIMEOUT_MS);
+
+  return status;
+}
+
 static void PushBtnTask(void)
 {
   HAL_GPIO_TogglePin(LED2_GPIO_Port, LED2_Pin);
+
+  if (WakeMcu2AndSendString("Hello World from MCU1") == HAL_OK)
+  {
+    APP_LOG(TS_OFF, VLEVEL_M, "I2C message sent to MCU2\r\n");
+  }
+  else
+  {
+    APP_LOG(TS_OFF, VLEVEL_M, "I2C message send to MCU2 failed\r\n");
+  }
 }
 /* USER CODE END PrFD */

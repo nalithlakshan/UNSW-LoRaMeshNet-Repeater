@@ -25,6 +25,7 @@
 #include "radio.h"
 
 /* USER CODE BEGIN Includes */
+#include "i2c.h"
 #include "main.h"
 #include "stm32_timer.h"
 #include "stm32_seq.h"
@@ -51,6 +52,8 @@
 #define CAD_SCAN_PERIOD_MS           1000
 #define CAD_DET_PEAK                 28
 #define CAD_DET_MIN                  14
+#define MCU1_I2C_RX_TIMEOUT_MS       1000
+#define MCU1_EXPECTED_MSG_LEN        (sizeof("Hello World from MCU1") - 1U)
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -77,6 +80,7 @@ static uint8_t RxTextBuf[MAX_APP_BUFFER_SIZE];
 uint16_t RxBufferSize = 0;  // Last  Received Buffer Size
 int8_t RssiValue = 0;       // Last  Received packer Rssi
 int8_t SnrValue = 0;        // Last  Received packer SNR (in Lora modulation)
+static uint8_t Mcu1I2cRxBuf[MCU1_EXPECTED_MSG_LEN + 1U];
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -123,6 +127,8 @@ static void TxTask(void);
 static void CadTimerCb(void *context);
 static void CAD_Scan(void);
 static void PushBtnTask(void);
+static void Mcu1WakeRxTask(void);
+static void ReceiveI2cMessageFromMcu1(void);
 
 /* USER CODE END PFP */
 
@@ -175,6 +181,7 @@ void SubghzApp_Init(void)
   UTIL_SEQ_RegTask((1U << CFG_SEQ_Task_LoRaTx), 0, TxTask);
   UTIL_SEQ_RegTask((1U << CFG_SEQ_Task_LoRaCadScan), 0, CAD_Scan);
   UTIL_SEQ_RegTask((1U << CFG_SEQ_Task_BTN), 0, PushBtnTask);
+  UTIL_SEQ_RegTask((1U << CFG_SEQ_Task_MCU1WakeRx), 0, Mcu1WakeRxTask);
 
   /* Periodic TX every 2000 ms */
   UTIL_TIMER_Create(&TxTimer, 5000, UTIL_TIMER_PERIODIC, TxTimerCb, NULL);
@@ -193,6 +200,10 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
   if (GPIO_Pin == BTN_GPIO_EXTI9_Pin)
   {
     UTIL_SEQ_SetTask((1U << CFG_SEQ_Task_BTN), CFG_SEQ_Prio_0);
+  }
+  else if (GPIO_Pin == WAKE_INT_MCU1_Pin)
+  {
+    UTIL_SEQ_SetTask((1U << CFG_SEQ_Task_MCU1WakeRx), CFG_SEQ_Prio_0);
   }
 }
 
@@ -319,6 +330,34 @@ static void CAD_Scan(void)
   CadScanCounter++;
   APP_LOG(TS_OFF, VLEVEL_M, "CAD scan #%u\r\n", (unsigned int)CadScanCounter);
   Radio.StartCad();
+}
+
+static void ReceiveI2cMessageFromMcu1(void)
+{
+  HAL_StatusTypeDef status;
+
+  memset(Mcu1I2cRxBuf, 0, sizeof(Mcu1I2cRxBuf));
+  status = HAL_I2C_Slave_Receive(&hi2c2,
+                                 Mcu1I2cRxBuf,
+                                 MCU1_EXPECTED_MSG_LEN,
+                                 MCU1_I2C_RX_TIMEOUT_MS);
+
+  if (status == HAL_OK)
+  {
+    Mcu1I2cRxBuf[MCU1_EXPECTED_MSG_LEN] = '\0';
+    APP_LOG(TS_OFF, VLEVEL_M, "I2C message from MCU1: \"%s\"\r\n", Mcu1I2cRxBuf);
+  }
+  else
+  {
+    APP_LOG(TS_OFF, VLEVEL_M, "I2C receive from MCU1 failed, status=%d, error=0x%X\r\n",
+            (unsigned int)status, (unsigned int)HAL_I2C_GetError(&hi2c2));
+  }
+}
+
+static void Mcu1WakeRxTask(void)
+{
+  APP_LOG(TS_OFF, VLEVEL_M, "Wake interrupt from MCU1 detected\r\n");
+  ReceiveI2cMessageFromMcu1();
 }
 
 static void PushBtnTask(void)
