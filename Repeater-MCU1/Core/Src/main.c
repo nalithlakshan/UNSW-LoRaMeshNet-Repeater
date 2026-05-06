@@ -28,6 +28,9 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "stm32_timer.h"
+#include <stdio.h>
+#include <string.h>
+#include "sys_app.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -48,7 +51,8 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
-
+uint8_t uart1_rx_dma_buffer [1024];
+uint8_t uart2_rx_dma_buffer [1024];
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -94,9 +98,19 @@ int main(void)
   MX_DMA_Init();
   MX_SubGHz_Phy_Init();
   MX_USART1_UART_Init();
-//  MX_RTC_Init();
+  // MX_RTC_Init();
   MX_I2C2_Init();
+  MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
+
+  // HAL_GPIO_WritePin(LED2_GPIO_Port, LED2_Pin, 1); // Turn on LED2 to indicate that the system is running
+  
+  HAL_GPIO_WritePin(LOAD_SWITCH_GPIO_Port, LOAD_SWITCH_Pin, 1);
+
+  // HAL_UARTEx_ReceiveToIdle_DMA(&huart1, (uint8_t *) &uart1_rx_dma_buffer, sizeof(uart1_rx_dma_buffer));
+  // HAL_UARTEx_ReceiveToIdle_DMA(&huart2, (uint8_t *) &uart2_rx_dma_buffer, sizeof(uart2_rx_dma_buffer));
+  // __HAL_DMA_DISABLE_IT(huart1.hdmarx, DMA_IT_HT);
+  // __HAL_DMA_DISABLE_IT(huart2.hdmarx, DMA_IT_HT);
 
   /* USER CODE END 2 */
 
@@ -171,6 +185,35 @@ void SystemClock_Config(void)
 }
 
 /* USER CODE BEGIN 4 */
+
+// void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
+// {
+//   if (huart->Instance == USART2) 
+//   {
+//     APP_LOG(TS_OFF, VLEVEL_M, "Response from ESP-01: %s\r\n", uart2_rx_dma_buffer);
+//     HAL_UARTEx_ReceiveToIdle_DMA(&huart2, (uint8_t *) &uart2_rx_dma_buffer, sizeof(uart2_rx_dma_buffer));
+//     __HAL_DMA_DISABLE_IT(huart2.hdmarx, DMA_IT_HT);
+//   }
+
+//   if (huart->Instance == USART1)
+//   {
+//     APP_LOG(TS_OFF, VLEVEL_M, "Message Sent to ESP-01: %s\r\n", uart1_rx_dma_buffer);
+//     HAL_UART_Transmit(&huart2, (uint8_t *)uart1_rx_dma_buffer, strlen(uart1_rx_dma_buffer), HAL_MAX_DELAY);
+//     HAL_UARTEx_ReceiveToIdle_DMA(&huart1, (uint8_t *) &uart1_rx_dma_buffer, sizeof(uart1_rx_dma_buffer));
+//     __HAL_DMA_DISABLE_IT(huart1.hdmarx, DMA_IT_HT);
+
+//   }
+// }
+
+// void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
+// {
+//   if (huart->Instance == USART1)
+//   {
+//     // Handle UART error (e.g., log it, reset the UART, etc.)
+//     // For this example, we'll just toggle an LED to indicate an error
+//     HAL_GPIO_TogglePin(LED1_GPIO_Port, LED1_Pin);
+//   }
+// }
 
 /* USER CODE END 4 */
 
