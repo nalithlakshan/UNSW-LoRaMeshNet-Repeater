@@ -2,21 +2,8 @@
 #include <WiFiClientSecure.h>
 #include <PubSubClient.h>
 
-// const char* ssid = "YN-WiFi";
-// const char* password = "dimobatta1";
-
-extern "C" {
-#include "user_interface.h"
-#include "wpa2_enterprise.h"
-}
-
-const char* ssid = "eduroam";
-
-// Eduroam requires WPA2-Enterprise credentials. Use your full realm username,
-// for example your UNSW zID in the format required by UNSW IT.
-const char* eapIdentity = "z5440292";
-const char* eapUsername = "z5440292";
-const char* eapPassword = "HarveySpector@1";
+const char* ssid = "YN-WiFi";
+const char* password = "dimobatta1";
 
 const char* mqttServer = "7a95f954fa024e02b2abee411a96e857.s1.eu.hivemq.cloud";
 const int mqttPort = 8883;
@@ -31,8 +18,11 @@ PubSubClient mqttClient(espClient);
 
 char clientID[32];
 
+String serialData = "";
+
 void setup() {
   Serial.begin(115200);
+  Serial.setTimeout(50);
   delay(1000);
 
   Serial.println("Starting...");
@@ -42,7 +32,6 @@ void setup() {
   snprintf(clientID, sizeof(clientID), "ESP01-%06X", ESP.getChipId());
   Serial.printf("Client ID: %s\n", clientID);
 
-  // For quick testing only: disables certificate validation
   espClient.setInsecure();
 
   mqttClient.setServer(mqttServer, mqttPort);
@@ -57,13 +46,7 @@ void loop() {
   mqttClient.loop();
 
   if (Serial.available() > 0) {
-    String serialData = "";
-
-    while (Serial.available() > 0){
-      serialData += Serial.readString();
-      delay(2);
-    }
-
+    serialData += Serial.readString();
     serialData.trim();
 
     if (serialData.length() > 0) {
@@ -73,6 +56,8 @@ void loop() {
       Serial.print(serialData);
       Serial.print(" to topic ");
       Serial.println(publishTopic);
+
+      serialData = "";
     }
   }
 
@@ -83,19 +68,7 @@ void connectWiFi() {
   Serial.println("Connecting to WiFi...");
 
   WiFi.mode(WIFI_STA);
-  // WiFi.begin(ssid, password);
-  
-  WiFi.persistent(false);
-  WiFi.disconnect(true);
-  delay(1000);
-  wifi_station_disconnect();
-  wifi_station_clear_cert_key();
-  wifi_station_clear_enterprise_ca_cert();
-  wifi_station_set_wpa2_enterprise_auth(1);
-  wifi_station_set_enterprise_identity((uint8*)eapIdentity, strlen(eapIdentity));
-  wifi_station_set_enterprise_username((uint8*)eapUsername, strlen(eapUsername));
-  wifi_station_set_enterprise_password((uint8*)eapPassword, strlen(eapPassword));
-  WiFi.begin(ssid);
+  WiFi.begin(ssid, password);
 
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);

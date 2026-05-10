@@ -2,18 +2,8 @@
 /**
   ******************************************************************************
   * @file    subghz_phy_app.c
-  * @author  MCD Application Team
+  * @author  Nalith Udugampola
   * @brief   Application of the SubGHz_Phy Middleware
-  ******************************************************************************
-  * @attention
-  *
-  * Copyright (c) 2026 STMicroelectronics.
-  * All rights reserved.
-  *
-  * This software is licensed under terms that can be found in the LICENSE file
-  * in the root directory of this software component.
-  * If no LICENSE file comes with this software, it is provided AS-IS.
-  *
   ******************************************************************************
   */
 /* USER CODE END Header */
@@ -27,11 +17,15 @@
 /* USER CODE BEGIN Includes */
 #include "i2c.h"
 #include "main.h"
+#include "usart.h"
 #include "stm32_timer.h"
 #include "stm32_seq.h"
 #include <string.h>
 #include "radio_driver.h"
 #include "utilities_def.h"
+#include <stdio.h>
+
+#include "cad_mode.h"
 /* USER CODE END Includes */
 
 /* External variables ---------------------------------------------------------*/
@@ -47,11 +41,7 @@
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 #define MAX_APP_BUFFER_SIZE          255
-#define RX_TIMEOUT_VALUE             3000
 #define TX_TIMEOUT_VALUE             3000
-#define CAD_SCAN_PERIOD_MS           1000
-#define CAD_DET_PEAK                 28
-#define CAD_DET_MIN                  14
 
 #define MCU2_I2C_ADDRESS_7BIT        12
 #define I2C_TX_TIMEOUT_MS            100
@@ -67,14 +57,20 @@
 static RadioEvents_t RadioEvents;
 
 /* USER CODE BEGIN PV */
+
+// Device ID
+uint8_t nodeID = 3;
+char nodeType = 'R';  // 'R' for Repeater, 'E' for End Device
+
+// Routing Info
+uint8_t nextUptreamNodeID = 4;
+uint8_t nextDownstreamNodeID = 2;
+char direction = 'U';  // 'U' for upstream, 'D' for downstream
+
 // PV for periodic transmission example
 static UTIL_TIMER_Object_t TxTimer;
-static uint8_t TxBuf[] = "Hello World!\r\n";
+static uint8_t TxBuf[256];
 static uint8_t TxCounter = 0;
-
-// PV for periodic CAD scan example
-static UTIL_TIMER_Object_t CadTimer;
-static uint32_t CadScanCounter = 0;
 
 // PV for Rx data
 static uint8_t RxTextBuf[MAX_APP_BUFFER_SIZE];
@@ -115,17 +111,9 @@ static void OnRxError(void);
 
 /* USER CODE BEGIN PFP */
 
-/**
-  * @brief Function executed on Radio CAD Done event
-  * @param  channelActivityDetected true when activity is detected on the channel
-  */
-static void OnCadDone(bool channelActivityDetected);
-
 static void TxTimerCb(void *context);
 static void TxTask(void);
 
-static void CadTimerCb(void *context);
-static void CAD_Scan(void);
 static void PushBtnTask(void);
 static HAL_StatusTypeDef WakeMcu2AndSendString(const char *message);
 
@@ -137,6 +125,8 @@ void SubghzApp_Init(void)
   /* USER CODE BEGIN SubghzApp_Init_1 */
   APP_LOG(TS_OFF, VLEVEL_M, "SubGHz App Started!\r\n");
 
+  snprintf((char *)TxBuf, sizeof(TxBuf), "|%d|%d|%c|payload\r\n", nodeID, nextUptreamNodeID, direction);
+
   /* USER CODE END SubghzApp_Init_1 */
 
   /* Radio initialization */
@@ -145,16 +135,15 @@ void SubghzApp_Init(void)
   RadioEvents.TxTimeout = OnTxTimeout;
   RadioEvents.RxTimeout = OnRxTimeout;
   RadioEvents.RxError = OnRxError;
+  RadioEvents.CadDone = CAD_Mode_OnCadDone;
 
   Radio.Init(&RadioEvents);
 
   /* USER CODE BEGIN SubghzApp_Init_2 */
 
-  /* Radio Set frequency */
+  /* Radio Configuration for LoRa */
   Radio.SetChannel(RF_FREQUENCY);
 
-#if ((USE_MODEM_LORA == 1) && (USE_MODEM_FSK == 0))
-  Radio.SetChannel(RF_FREQUENCY);
   Radio.SetTxConfig(MODEM_LORA, TX_OUTPUT_POWER, 0, LORA_BANDWIDTH,
                     LORA_SPREADING_FACTOR, LORA_CODINGRATE,
                     LORA_PREAMBLE_LENGTH, LORA_FIX_LENGTH_PAYLOAD_ON,
@@ -163,31 +152,25 @@ void SubghzApp_Init(void)
                     LORA_CODINGRATE, 0, LORA_PREAMBLE_LENGTH,
                     LORA_SYMBOL_TIMEOUT, LORA_FIX_LENGTH_PAYLOAD_ON, 0,
                     true, 0, 0, LORA_IQ_INVERSION_ON, false);
-  SUBGRF_SetCadParams(LORA_CAD_02_SYMBOL, CAD_DET_PEAK, CAD_DET_MIN,
-                      LORA_CAD_RX, 0);
+  CAD_Mode_ConfigRadio();
   Radio.SetMaxPayloadLength(MODEM_LORA, MAX_APP_BUFFER_SIZE);
   Radio.Sleep();
-#elif ((USE_MODEM_LORA == 0) && (USE_MODEM_FSK == 1))
-  Radio.SetTxConfig(MODEM_FSK, TX_OUTPUT_POWER, FSK_FDEV, 0,
-                    FSK_DATARATE, 0,
-                    FSK_PREAMBLE_LENGTH, FSK_FIX_LENGTH_PAYLOAD_ON,
-                    true, 0, 0, 0, TX_TIMEOUT_VALUE);
-  Radio.SetMaxPayloadLength(MODEM_FSK, MAX_APP_BUFFER_SIZE);
-#else
-#error "Please define a modulation in the subghz_phy_app.h file."
-#endif /* USE_MODEM_LORA | USE_MODEM_FSK */
 
+  /*  Register Sequencer Tasks */
   UTIL_SEQ_RegTask((1U << CFG_SEQ_Task_LoRaTx), 0, TxTask);
-  UTIL_SEQ_RegTask((1U << CFG_SEQ_Task_LoRaCadScan), 0, CAD_Scan);
   UTIL_SEQ_RegTask((1U << CFG_SEQ_Task_BTN), 0, PushBtnTask);
 
-  /* Periodic TX every 2000 ms */
-  UTIL_TIMER_Create(&TxTimer, 5000, UTIL_TIMER_PERIODIC, TxTimerCb, NULL);
-  // UTIL_TIMER_Start(&TxTimer);
+  if(nodeType == 'E')
+  {
+    /* Start periodic transmission for end device */
+     UTIL_TIMER_Create(&TxTimer, 8000, UTIL_TIMER_PERIODIC, TxTimerCb, NULL);
+     UTIL_TIMER_Start(&TxTimer);
+  }
 
-  /* Periodic LoRa CAD scan every 1000 ms */
-  UTIL_TIMER_Create(&CadTimer, CAD_SCAN_PERIOD_MS, UTIL_TIMER_PERIODIC, CadTimerCb, NULL);
-  UTIL_TIMER_Start(&CadTimer);
+  if(nodeType == 'R')
+  {
+    CAD_Mode_Init();
+  }
 
   HAL_GPIO_WritePin(WAKE_MCU2_GPIO_Port, WAKE_MCU2_Pin, GPIO_PIN_RESET);
 
@@ -219,6 +202,8 @@ static void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t LoraS
 {
   /* USER CODE BEGIN OnRxDone */
 
+  APP_LOG(TS_OFF, VLEVEL_M, "RX done\r\n");
+
   /* Clear BufferRx*/
   memset(RxTextBuf, 0, MAX_APP_BUFFER_SIZE);
 
@@ -229,13 +214,74 @@ static void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t LoraS
     memcpy(RxTextBuf, payload, RxBufferSize);
   }
 
-  APP_LOG(TS_OFF, VLEVEL_M, "RX done, size=%u, RSSI=%d, SNR=%d, payload=\"%s\"\r\n",
-          size, rssi, LoraSnr_FskCfo, RxTextBuf);
+  uint8_t txID = 0;
+  uint8_t intendedRxID = 0;
+  char Direction = 0;
+  char Payload[MAX_APP_BUFFER_SIZE] = {0};
 
-  // Repeating the received packet after receiving it
-  APP_LOG(TS_OFF, VLEVEL_M, "Repeating the received packet\r\n");
-  Radio.SetChannel(RF_FREQUENCY+250000);
-  Radio.Send(payload, size);
+  char *txIDStart = (char *)RxTextBuf;
+  if (*txIDStart == '|')
+  {
+    char *txIDEnd = strchr(txIDStart + 1, '|');
+    char *intendedRxIDEnd = (txIDEnd != NULL) ? strchr(txIDEnd + 1, '|') : NULL;
+    char *directionEnd = (intendedRxIDEnd != NULL) ? strchr(intendedRxIDEnd + 1, '|') : NULL;
+
+    if ((txIDEnd != NULL) && (intendedRxIDEnd != NULL) && (directionEnd != NULL))
+    {
+      for (char *p = txIDStart + 1; p < txIDEnd; p++)
+      {
+        txID = (uint8_t)((txID * 10U) + (uint8_t)(*p - '0'));
+      }
+
+      for (char *p = txIDEnd + 1; p < intendedRxIDEnd; p++)
+      {
+        intendedRxID = (uint8_t)((intendedRxID * 10U) + (uint8_t)(*p - '0'));
+      }
+
+      Direction = *(intendedRxIDEnd + 1);
+
+      size_t payloadLen = strlen(directionEnd + 1);
+      if ((payloadLen >= 2U) &&
+          (directionEnd[1 + payloadLen - 2U] == '\r') &&
+          (directionEnd[1 + payloadLen - 1U] == '\n'))
+      {
+        payloadLen -= 2U;
+      }
+
+      if (payloadLen >= MAX_APP_BUFFER_SIZE)
+      {
+        payloadLen = MAX_APP_BUFFER_SIZE - 1U;
+      }
+
+      memcpy(Payload, directionEnd + 1, payloadLen);
+    }
+  }
+
+  APP_LOG(TS_OFF, VLEVEL_M, "RX done, size=%u, RSSI=%d, SNR=%d, Tx ID=%u, Intended Rx ID=%u, Direction=%c, Payload=\"%s\"\r\n",
+          size, rssi, LoraSnr_FskCfo, txID, intendedRxID, Direction, Payload);
+
+  if (intendedRxID != nodeID)
+  {
+    APP_LOG(TS_OFF, VLEVEL_M, "not intended for me\r\n");
+  }
+  else
+  {
+    uint8_t nextRxID = (Direction == 'U') ? nextUptreamNodeID : nextDownstreamNodeID;
+    uint8_t RepeatBuf[MAX_APP_BUFFER_SIZE] = {0};
+    int RepeatSize = snprintf((char *)RepeatBuf, sizeof(RepeatBuf), "|%d|%d|%c|%s\r\n",
+                              nodeID, nextRxID, Direction, Payload);
+
+    if ((RepeatSize > 0) && (RepeatSize < MAX_APP_BUFFER_SIZE))
+    {
+      APP_LOG(TS_OFF, VLEVEL_M, "Repeating the received packet\r\n");
+
+      uint8_t UartMsg[MAX_APP_BUFFER_SIZE] = {0};
+      int UartMsgSize = snprintf((char *)UartMsg, sizeof(UartMsg),"Node %d: Repeating Packet %s\r\n", nodeID, RepeatBuf);
+      HAL_UART_Transmit(&huart2, UartMsg, (uint16_t)UartMsgSize, HAL_MAX_DELAY);
+      
+      Radio.Send(RepeatBuf, (uint16_t)RepeatSize);
+    }
+  }
   
   /* USER CODE END OnRxDone */
 }
@@ -283,49 +329,16 @@ static void TxTask(void)
 
   TxCounter = TxCounter + 1U;
   APP_LOG(TS_OFF, VLEVEL_M, "TX counter = %u\r\n", TxCounter);
+  
+  uint8_t UartMsg[MAX_APP_BUFFER_SIZE] = {0};
+  int UartMsgSize = snprintf((char *)UartMsg, sizeof(UartMsg),"Node %d: Transmitting Packet %s\r\n", nodeID, TxBuf);
+  HAL_UART_Transmit(&huart2, UartMsg, (uint16_t)UartMsgSize, HAL_MAX_DELAY);
+
   Radio.Send(TxBuf, PAYLOAD_LEN);
   // int i = 0;
   // while(i<10000000){
 	//   i = i+1;
   // }
-}
-
-static void OnCadDone(bool channelActivityDetected)
-{
-  /* USER CODE BEGIN OnCadDone */
-  APP_LOG(TS_OFF, VLEVEL_M, "CAD done: %s\r\n",
-          channelActivityDetected ? "activity detected" : "channel clear");
-
-  if (channelActivityDetected == false)
-  {
-    Radio.Sleep();
-  }
-  else
-  {
-    // Channel activity detected, we can decide to receive or transmit
-    // For example, we can start receiving
-    Radio.Rx(RX_TIMEOUT_VALUE);
-  }
-  /* USER CODE END OnCadDone */
-}
-
-static void CadTimerCb(void *context)
-{
-  (void)context;
-  UTIL_SEQ_SetTask((1U << CFG_SEQ_Task_LoRaCadScan), CFG_SEQ_Prio_0);
-}
-
-static void CAD_Scan(void)
-{
-  if (Radio.GetStatus() != RF_IDLE)
-  {
-    APP_LOG(TS_OFF, VLEVEL_M, "CAD skipped, radio busy\r\n");
-    return;
-  }
-
-  CadScanCounter++;
-  APP_LOG(TS_OFF, VLEVEL_M, "CAD scan #%u\r\n", (unsigned int)CadScanCounter);
-  Radio.StartCad();
 }
 
 static HAL_StatusTypeDef WakeMcu2AndSendString(const char *message)
