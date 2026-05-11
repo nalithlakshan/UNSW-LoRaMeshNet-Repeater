@@ -3,7 +3,7 @@
   ******************************************************************************
   * @file    subghz_phy_app.c
   * @author  Nalith Udugampola
-  * @brief   Application of the SubGHz_Phy Middleware
+  * @brief   Application of the LoRa Repeater's SubGHz_Phy Middleware
   ******************************************************************************
   */
 /* USER CODE END Header */
@@ -26,10 +26,25 @@
 #include <stdio.h>
 
 #include "cad_mode.h"
+#include "transmitter.h"
 /* USER CODE END Includes */
 
 /* External variables ---------------------------------------------------------*/
 /* USER CODE BEGIN EV */
+
+// Device Info
+uint8_t nodeID = 3;
+char nodeType = 'E';  // 'R' for Repeater, 'E' for End Device, 'G' for Gateway
+double batteryPercentage = 100.0;
+uint16_t distanceValue = 0; // Distance value to nearest gateway, to be updated by routing init
+
+// Routing Info
+NeighbourInfo_t Neighbours[MAX_NEIGHBOURS] = {0};
+uint8_t NeighbourCount = 0;
+uint8_t nextUptreamNodeID = 4;
+uint8_t nextDownstreamNodeID = 2;
+uint8_t nearestGatewayID = 0;
+char direction = 'U';  // 'U' for upstream, 'D' for downstream, 'B' for broadcast
 
 /* USER CODE END EV */
 
@@ -58,20 +73,6 @@ static RadioEvents_t RadioEvents;
 
 /* USER CODE BEGIN PV */
 
-// Device ID
-uint8_t nodeID = 3;
-char nodeType = 'R';  // 'R' for Repeater, 'E' for End Device
-
-// Routing Info
-uint8_t nextUptreamNodeID = 4;
-uint8_t nextDownstreamNodeID = 2;
-char direction = 'U';  // 'U' for upstream, 'D' for downstream
-
-// PV for periodic transmission example
-static UTIL_TIMER_Object_t TxTimer;
-static uint8_t TxBuf[256];
-static uint8_t TxCounter = 0;
-
 // PV for Rx data
 static uint8_t RxTextBuf[MAX_APP_BUFFER_SIZE];
 uint16_t RxBufferSize = 0;  // Last  Received Buffer Size
@@ -80,11 +81,6 @@ int8_t SnrValue = 0;        // Last  Received packer SNR (in Lora modulation)
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
-/*!
- * @brief Function to be executed on Radio Tx Done event
- */
-static void OnTxDone(void);
-
 /**
   * @brief Function to be executed on Radio Rx Done event
   * @param  payload ptr of buffer received
@@ -93,11 +89,6 @@ static void OnTxDone(void);
   * @param  LoraSnr_FskCfo
   */
 static void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t LoraSnr_FskCfo);
-
-/**
-  * @brief Function executed on Radio Tx Timeout event
-  */
-static void OnTxTimeout(void);
 
 /**
   * @brief Function executed on Radio Rx Timeout event
@@ -111,9 +102,6 @@ static void OnRxError(void);
 
 /* USER CODE BEGIN PFP */
 
-static void TxTimerCb(void *context);
-static void TxTask(void);
-
 static void PushBtnTask(void);
 static HAL_StatusTypeDef WakeMcu2AndSendString(const char *message);
 
@@ -125,14 +113,12 @@ void SubghzApp_Init(void)
   /* USER CODE BEGIN SubghzApp_Init_1 */
   APP_LOG(TS_OFF, VLEVEL_M, "SubGHz App Started!\r\n");
 
-  snprintf((char *)TxBuf, sizeof(TxBuf), "|%d|%d|%c|payload\r\n", nodeID, nextUptreamNodeID, direction);
-
   /* USER CODE END SubghzApp_Init_1 */
 
   /* Radio initialization */
-  RadioEvents.TxDone = OnTxDone;
+  RadioEvents.TxDone = Transmitter_OnTxDone;
   RadioEvents.RxDone = OnRxDone;
-  RadioEvents.TxTimeout = OnTxTimeout;
+  RadioEvents.TxTimeout = Transmitter_OnTxTimeout;
   RadioEvents.RxTimeout = OnRxTimeout;
   RadioEvents.RxError = OnRxError;
   RadioEvents.CadDone = CAD_Mode_OnCadDone;
@@ -157,14 +143,11 @@ void SubghzApp_Init(void)
   Radio.Sleep();
 
   /*  Register Sequencer Tasks */
-  UTIL_SEQ_RegTask((1U << CFG_SEQ_Task_LoRaTx), 0, TxTask);
   UTIL_SEQ_RegTask((1U << CFG_SEQ_Task_BTN), 0, PushBtnTask);
 
   if(nodeType == 'E')
   {
-    /* Start periodic transmission for end device */
-     UTIL_TIMER_Create(&TxTimer, 8000, UTIL_TIMER_PERIODIC, TxTimerCb, NULL);
-     UTIL_TIMER_Start(&TxTimer);
+    Transmitter_StartPeriodicED();
   }
 
   if(nodeType == 'R')
@@ -189,15 +172,6 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 /* USER CODE END EF */
 
 /* Private functions ---------------------------------------------------------*/
-static void OnTxDone(void)
-{
-  /* USER CODE BEGIN OnTxDone */
-  APP_LOG(TS_OFF, VLEVEL_M, "TX done\r\n");
-  Radio.SetChannel(RF_FREQUENCY);
-  Radio.Sleep();
-  /* USER CODE END OnTxDone */
-}
-
 static void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t LoraSnr_FskCfo)
 {
   /* USER CODE BEGIN OnRxDone */
@@ -286,13 +260,6 @@ static void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t LoraS
   /* USER CODE END OnRxDone */
 }
 
-static void OnTxTimeout(void)
-{
-  /* USER CODE BEGIN OnTxTimeout */
-  APP_LOG(TS_OFF, VLEVEL_M, "TX timeout\r\n");
-  /* USER CODE END OnTxTimeout */
-}
-
 static void OnRxTimeout(void)
 {
   /* USER CODE BEGIN OnRxTimeout */
@@ -310,36 +277,6 @@ static void OnRxError(void)
 }
 
 /* USER CODE BEGIN PrFD */
-
-static void TxTimerCb(void *context)
-{
-  (void)context;
-  APP_LOG(TS_OFF, VLEVEL_M, "TxTimer Expired\r\n");
-  UTIL_SEQ_SetTask((1U << CFG_SEQ_Task_LoRaTx), CFG_SEQ_Prio_0);
-}
-
-static void TxTask(void)
-{
-//  HAL_GPIO_TogglePin(LED1_GPIO_Port, LED1_Pin);
-  if (Radio.GetStatus() != RF_IDLE)
-  {
-    APP_LOG(TS_OFF, VLEVEL_M, "TX skipped, radio busy\r\n");
-    return;
-  }
-
-  TxCounter = TxCounter + 1U;
-  APP_LOG(TS_OFF, VLEVEL_M, "TX counter = %u\r\n", TxCounter);
-  
-  uint8_t UartMsg[MAX_APP_BUFFER_SIZE] = {0};
-  int UartMsgSize = snprintf((char *)UartMsg, sizeof(UartMsg),"Node %d: Transmitting Packet %s\r\n", nodeID, TxBuf);
-  HAL_UART_Transmit(&huart2, UartMsg, (uint16_t)UartMsgSize, HAL_MAX_DELAY);
-
-  Radio.Send(TxBuf, PAYLOAD_LEN);
-  // int i = 0;
-  // while(i<10000000){
-	//   i = i+1;
-  // }
-}
 
 static HAL_StatusTypeDef WakeMcu2AndSendString(const char *message)
 {

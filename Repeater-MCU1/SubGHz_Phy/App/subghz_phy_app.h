@@ -3,17 +3,7 @@
   ******************************************************************************
   * @file    subghz_phy_app.h
   * @author  MCD Application Team
-  * @brief   Header of application of the SubGHz_Phy Middleware
-  ******************************************************************************
-  * @attention
-  *
-  * Copyright (c) 2026 STMicroelectronics.
-  * All rights reserved.
-  *
-  * This software is licensed under terms that can be found in the LICENSE file
-  * in the root directory of this software component.
-  * If no LICENSE file comes with this software, it is provided AS-IS.
-  *
+  * @brief   Header of application of the LoRa Repeater's SubGHz_Phy Middleware
   ******************************************************************************
   */
 /* USER CODE END Header */
@@ -34,6 +24,12 @@ extern "C" {
 
 /* Exported types ------------------------------------------------------------*/
 /* USER CODE BEGIN ET */
+typedef struct NeighbourInfo_s  // To hold any neighbouring node's info
+{
+  uint8_t ID;
+  uint16_t DistanceValue;
+  int16_t RSSI;
+} NeighbourInfo_t;
 
 /* USER CODE END ET */
 
@@ -69,15 +65,26 @@ extern "C" {
 #error "Please define a modem in the compiler subghz_phy_app.h."
 #endif /* USE_MODEM_LORA | USE_MODEM_FSK */
 
-#define PAYLOAD_LEN                                 64
-
 /* USER CODE BEGIN EC */
+#define MAX_NEIGHBOURS                              32
 
 /* USER CODE END EC */
 
 /* External variables --------------------------------------------------------*/
 /* USER CODE BEGIN EV */
+// Device Info
 extern uint8_t nodeID;
+extern char nodeType;
+extern double batteryPercentage;
+extern uint16_t distanceValue;
+
+// Routing Info
+extern NeighbourInfo_t Neighbours[MAX_NEIGHBOURS];
+extern uint8_t NeighbourCount;
+extern uint8_t nextUptreamNodeID;
+extern uint8_t nextDownstreamNodeID;
+extern uint8_t nearestGatewayID;
+extern char direction;
 
 /* USER CODE END EV */
 
