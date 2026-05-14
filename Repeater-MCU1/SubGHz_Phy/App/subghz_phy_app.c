@@ -26,6 +26,7 @@
 #include <stdio.h>
 
 #include "cad_mode.h"
+#include "packet.h"
 #include "transmitter.h"
 /* USER CODE END Includes */
 
@@ -33,17 +34,17 @@
 /* USER CODE BEGIN EV */
 
 // Device Info
-uint8_t nodeID = 3;
-char nodeType = 'E';  // 'R' for Repeater, 'E' for End Device, 'G' for Gateway
+uint8_t nodeID = 4;
+char nodeType = 'R';  // 'R' for Repeater, 'E' for End Device, 'G' for Gateway
 double batteryPercentage = 100.0;
 uint16_t distanceValue = 0; // Distance value to nearest gateway, to be updated by routing init
 
 // Routing Info
 NeighbourInfo_t Neighbours[MAX_NEIGHBOURS] = {0};
 uint8_t NeighbourCount = 0;
-uint8_t nextUptreamNodeID = 4;
-uint8_t nextDownstreamNodeID = 2;
-uint8_t nearestGatewayID = 0;
+uint8_t nextUptreamNodeID = 3;
+uint8_t nextDownstreamNodeID = 5;
+uint8_t nearestGatewayID = 1;
 char direction = 'U';  // 'U' for upstream, 'D' for downstream, 'B' for broadcast
 
 /* USER CODE END EV */
@@ -175,85 +176,83 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 static void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t LoraSnr_FskCfo)
 {
   /* USER CODE BEGIN OnRxDone */
-
-  APP_LOG(TS_OFF, VLEVEL_M, "RX done\r\n");
+  LoRaPacket_t receivedPacket;
+  const char *packetString;
 
   /* Clear BufferRx*/
   memset(RxTextBuf, 0, MAX_APP_BUFFER_SIZE);
 
   /* Record payload size*/
   RxBufferSize = size;
-  if (RxBufferSize <= MAX_APP_BUFFER_SIZE)
+  if (RxBufferSize > MAX_APP_BUFFER_SIZE)
   {
-    memcpy(RxTextBuf, payload, RxBufferSize);
+    APP_LOG(TS_OFF, VLEVEL_M, "RX packet too large, size=%u\r\n", RxBufferSize);
+    return;
   }
 
-  uint8_t txID = 0;
-  uint8_t intendedRxID = 0;
-  char Direction = 0;
-  char Payload[MAX_APP_BUFFER_SIZE] = {0};
+  memcpy(RxTextBuf, payload, RxBufferSize);
 
-  char *txIDStart = (char *)RxTextBuf;
-  if (*txIDStart == '|')
+  if (RxBufferSize < LORA_PACKET_HEADER_SIZE)
   {
-    char *txIDEnd = strchr(txIDStart + 1, '|');
-    char *intendedRxIDEnd = (txIDEnd != NULL) ? strchr(txIDEnd + 1, '|') : NULL;
-    char *directionEnd = (intendedRxIDEnd != NULL) ? strchr(intendedRxIDEnd + 1, '|') : NULL;
-
-    if ((txIDEnd != NULL) && (intendedRxIDEnd != NULL) && (directionEnd != NULL))
-    {
-      for (char *p = txIDStart + 1; p < txIDEnd; p++)
-      {
-        txID = (uint8_t)((txID * 10U) + (uint8_t)(*p - '0'));
-      }
-
-      for (char *p = txIDEnd + 1; p < intendedRxIDEnd; p++)
-      {
-        intendedRxID = (uint8_t)((intendedRxID * 10U) + (uint8_t)(*p - '0'));
-      }
-
-      Direction = *(intendedRxIDEnd + 1);
-
-      size_t payloadLen = strlen(directionEnd + 1);
-      if ((payloadLen >= 2U) &&
-          (directionEnd[1 + payloadLen - 2U] == '\r') &&
-          (directionEnd[1 + payloadLen - 1U] == '\n'))
-      {
-        payloadLen -= 2U;
-      }
-
-      if (payloadLen >= MAX_APP_BUFFER_SIZE)
-      {
-        payloadLen = MAX_APP_BUFFER_SIZE - 1U;
-      }
-
-      memcpy(Payload, directionEnd + 1, payloadLen);
-    }
+    APP_LOG(TS_OFF, VLEVEL_M, "RX packet too short, size=%u\r\n", RxBufferSize);
+    return;
   }
 
-  APP_LOG(TS_OFF, VLEVEL_M, "RX done, size=%u, RSSI=%d, SNR=%d, Tx ID=%u, Intended Rx ID=%u, Direction=%c, Payload=\"%s\"\r\n",
-          size, rssi, LoraSnr_FskCfo, txID, intendedRxID, Direction, Payload);
+  receivedPacket = Packet_Decode(RxTextBuf);
+  packetString = Packet_To_String(&receivedPacket);
+  APP_LOG(TS_OFF, VLEVEL_M, "RX done, size=%u, RSSI=%d, SNR=%d, %s\r\n",
+          size, rssi, LoraSnr_FskCfo, packetString);
 
-  if (intendedRxID != nodeID)
+  if (receivedPacket.rxNodeID != nodeID && receivedPacket.direction != PACKET_DIRECTION_BROADCAST)
   {
     APP_LOG(TS_OFF, VLEVEL_M, "not intended for me\r\n");
   }
   else
   {
-    uint8_t nextRxID = (Direction == 'U') ? nextUptreamNodeID : nextDownstreamNodeID;
+    uint8_t nextRxID;
     uint8_t RepeatBuf[MAX_APP_BUFFER_SIZE] = {0};
-    int RepeatSize = snprintf((char *)RepeatBuf, sizeof(RepeatBuf), "|%d|%d|%c|%s\r\n",
-                              nodeID, nextRxID, Direction, Payload);
+    uint16_t RepeatSize;
 
-    if ((RepeatSize > 0) && (RepeatSize < MAX_APP_BUFFER_SIZE))
+    if (receivedPacket.direction == PACKET_DIRECTION_DOWNSTREAM)
     {
-      APP_LOG(TS_OFF, VLEVEL_M, "Repeating the received packet\r\n");
+      nextRxID = nextDownstreamNodeID;
+    }
+    else if (receivedPacket.direction == PACKET_DIRECTION_UPSTREAM)
+    {
+      nextRxID = nextUptreamNodeID;
+    }
+    else
+    {
+      nextRxID = 0; // For broadcast, set nextRxID to 0 or any value as it won't be used for routing
+    }
 
-      uint8_t UartMsg[MAX_APP_BUFFER_SIZE] = {0};
-      int UartMsgSize = snprintf((char *)UartMsg, sizeof(UartMsg),"Node %d: Repeating Packet %s\r\n", nodeID, RepeatBuf);
+    receivedPacket.txNodeID = nodeID;
+    receivedPacket.txNodeType = (nodeType == 'E') ? PACKET_NODE_TYPE_END_DEVICE :
+                                (nodeType == 'R') ? PACKET_NODE_TYPE_REPEATER :
+                                                    PACKET_NODE_TYPE_GATEWAY;
+    receivedPacket.txDistanceValue = distanceValue;
+    receivedPacket.txBatteryPercentage = (uint8_t)batteryPercentage;
+    receivedPacket.rxNodeID = nextRxID;
+    receivedPacket.rxNodeType = ((receivedPacket.direction == PACKET_DIRECTION_UPSTREAM) &&
+                                 (nextRxID == nearestGatewayID)) ? PACKET_NODE_TYPE_GATEWAY : PACKET_NODE_TYPE_REPEATER;
+    receivedPacket.rxDistanceValue = 0;
+    receivedPacket.nearestGwID = nearestGatewayID;
+
+    RepeatSize = Packet_Encode(&receivedPacket, RepeatBuf, sizeof(RepeatBuf));
+    if (RepeatSize > 0U)
+    {
+      uint8_t UartMsg[512] = {0};
+      packetString = Packet_To_String(&receivedPacket);
+      int UartMsgSize = snprintf((char *)UartMsg, sizeof(UartMsg),
+                                 "Node %d: Repeating Packet %s\r\n", nodeID, packetString);
+      APP_LOG(TS_OFF, VLEVEL_M, "Repeating the received packet\r\n");
       HAL_UART_Transmit(&huart2, UartMsg, (uint16_t)UartMsgSize, HAL_MAX_DELAY);
-      
-      Radio.Send(RepeatBuf, (uint16_t)RepeatSize);
+
+      Radio.Send(RepeatBuf, RepeatSize);
+    }
+    else
+    {
+      APP_LOG(TS_OFF, VLEVEL_M, "repeat skipped, packet encode failed\r\n");
     }
   }
   

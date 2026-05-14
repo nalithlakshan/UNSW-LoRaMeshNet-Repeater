@@ -31,7 +31,7 @@ static void CAD_Scan(void);
 void CAD_Mode_ConfigRadio(void)
 {
   SUBGRF_SetCadParams(LORA_CAD_02_SYMBOL, CAD_DET_PEAK, CAD_DET_MIN,
-                      LORA_CAD_RX, 0);
+                      LORA_CAD_ONLY, 0);
 }
 
 void CAD_Mode_Init(void)
