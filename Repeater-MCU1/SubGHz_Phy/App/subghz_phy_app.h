@@ -18,6 +18,7 @@ extern "C" {
 
 /* Includes ------------------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include <stdbool.h>
 #include <stdint.h>
 
 /* USER CODE END Includes */
@@ -38,7 +39,7 @@ typedef struct NeighbourInfo_s  // To hold any neighbouring node's info
 #define USE_MODEM_LORA  1
 #define USE_MODEM_FSK   0
 
-#define RF_FREQUENCY                                915000000 /* Hz */
+#define RF_FREQUENCY                                915100000 /* Hz */
 
 #ifndef TX_OUTPUT_POWER   /* please, to change this value, redefine it in USER CODE SECTION */
 #define TX_OUTPUT_POWER                             14        /* dBm */
@@ -77,6 +78,7 @@ extern uint8_t nodeID;
 extern char nodeType;
 extern double batteryPercentage;
 extern uint16_t distanceValue;
+extern bool activeMode;
 
 // Routing Info
 extern NeighbourInfo_t Neighbours[MAX_NEIGHBOURS];

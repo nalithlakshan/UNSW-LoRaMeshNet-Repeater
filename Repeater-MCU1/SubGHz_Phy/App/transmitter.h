@@ -12,6 +12,25 @@
 extern "C" {
 #endif
 
+#include "packet.h"
+
+#include <stdbool.h>
+#include <stdint.h>
+
+#define TRANSMIT_BUFFER_MAX_PACKETS 10U
+
+typedef struct
+{
+    LoRaPacket_t packets[TRANSMIT_BUFFER_MAX_PACKETS];
+    uint8_t head;
+    uint8_t tail;
+    uint8_t count;
+} TransmitBuffer_t;
+
+extern TransmitBuffer_t Transmit_Buffer;
+
+bool Transmitter_Submit(const LoRaPacket_t *packet);
+void Transmitter_TxLoop(void);
 void Transmitter_StartPeriodicED(void);
 void Transmitter_OnTxDone(void);
 void Transmitter_OnTxTimeout(void);

@@ -34,15 +34,16 @@
 /* USER CODE BEGIN EV */
 
 // Device Info
-uint8_t nodeID = 4;
-char nodeType = 'R';  // 'R' for Repeater, 'E' for End Device, 'G' for Gateway
+uint8_t nodeID = 5;
+char nodeType = 'E';  // 'R' for Repeater, 'E' for End Device, 'G' for Gateway
 double batteryPercentage = 100.0;
 uint16_t distanceValue = 0; // Distance value to nearest gateway, to be updated by routing init
+bool activeMode = false;
 
 // Routing Info
 NeighbourInfo_t Neighbours[MAX_NEIGHBOURS] = {0};
 uint8_t NeighbourCount = 0;
-uint8_t nextUptreamNodeID = 3;
+uint8_t nextUptreamNodeID = 4;
 uint8_t nextDownstreamNodeID = 5;
 uint8_t nearestGatewayID = 1;
 char direction = 'U';  // 'U' for upstream, 'D' for downstream, 'B' for broadcast
@@ -210,8 +211,6 @@ static void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t LoraS
   else
   {
     uint8_t nextRxID;
-    uint8_t RepeatBuf[MAX_APP_BUFFER_SIZE] = {0};
-    uint16_t RepeatSize;
 
     if (receivedPacket.direction == PACKET_DIRECTION_DOWNSTREAM)
     {
@@ -238,21 +237,18 @@ static void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t LoraS
     receivedPacket.rxDistanceValue = 0;
     receivedPacket.nearestGwID = nearestGatewayID;
 
-    RepeatSize = Packet_Encode(&receivedPacket, RepeatBuf, sizeof(RepeatBuf));
-    if (RepeatSize > 0U)
+    if (Transmitter_Submit(&receivedPacket))
     {
       uint8_t UartMsg[512] = {0};
       packetString = Packet_To_String(&receivedPacket);
       int UartMsgSize = snprintf((char *)UartMsg, sizeof(UartMsg),
-                                 "Node %d: Repeating Packet %s\r\n", nodeID, packetString);
-      APP_LOG(TS_OFF, VLEVEL_M, "Repeating the received packet\r\n");
+                                 "Node %d: Submitted Repeating Packet %s\r\n", nodeID, packetString);
+      APP_LOG(TS_OFF, VLEVEL_M, "Submitted the received packet for repeating\r\n");
       HAL_UART_Transmit(&huart2, UartMsg, (uint16_t)UartMsgSize, HAL_MAX_DELAY);
-
-      Radio.Send(RepeatBuf, RepeatSize);
     }
     else
     {
-      APP_LOG(TS_OFF, VLEVEL_M, "repeat skipped, packet encode failed\r\n");
+      APP_LOG(TS_OFF, VLEVEL_M, "repeat skipped, transmit buffer full\r\n");
     }
   }
   

@@ -18,6 +18,9 @@ void CAD_Mode_ConfigRadio(void);
 void CAD_Mode_Init(void);
 void CAD_Mode_OnCadDone(bool channelActivityDetected);
 
+extern volatile bool cadResultReady;
+extern volatile bool cadActivityDetected;
+
 #ifdef __cplusplus
 }
 #endif

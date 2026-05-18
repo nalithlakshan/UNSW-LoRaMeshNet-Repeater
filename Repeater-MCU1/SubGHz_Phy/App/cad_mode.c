@@ -24,6 +24,8 @@
 
 static UTIL_TIMER_Object_t CadTimer;
 static uint32_t CadScanCounter = 0;
+volatile bool cadResultReady = false;
+volatile bool cadActivityDetected = false;
 
 static void CadTimerCb(void *context);
 static void CAD_Scan(void);
@@ -43,6 +45,9 @@ void CAD_Mode_Init(void)
 
 void CAD_Mode_OnCadDone(bool channelActivityDetected)
 {
+  cadActivityDetected = channelActivityDetected;
+  cadResultReady = true;
+
   APP_LOG(TS_OFF, VLEVEL_M, "CAD done: %s\r\n",
           channelActivityDetected ? "activity detected" : "channel clear");
 
