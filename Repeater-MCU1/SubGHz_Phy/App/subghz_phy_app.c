@@ -34,16 +34,22 @@
 /* USER CODE BEGIN EV */
 
 // Device Info
-uint8_t nodeID = 5;
-char nodeType = 'E';  // 'R' for Repeater, 'E' for End Device, 'G' for Gateway
+uint8_t nodeID = 4;
+char nodeType = 'R';  // 'R' for Repeater, 'E' for End Device, 'G' for Gateway
 double batteryPercentage = 100.0;
 uint16_t distanceValue = 0; // Distance value to nearest gateway, to be updated by routing init
-bool activeMode = false;
+
+//Power Management Flags
+volatile bool activeMode = false;
+volatile bool awaitingWorAck = false;
+volatile bool awaitingTransmissionEndFlag = false;
+volatile bool inStandbyMode = false;
+
 
 // Routing Info
 NeighbourInfo_t Neighbours[MAX_NEIGHBOURS] = {0};
 uint8_t NeighbourCount = 0;
-uint8_t nextUptreamNodeID = 4;
+uint8_t nextUptreamNodeID = 3;
 uint8_t nextDownstreamNodeID = 5;
 uint8_t nearestGatewayID = 1;
 char direction = 'U';  // 'U' for upstream, 'D' for downstream, 'B' for broadcast
@@ -145,6 +151,7 @@ void SubghzApp_Init(void)
   Radio.Sleep();
 
   /*  Register Sequencer Tasks */
+  Transmitter_Init();
   UTIL_SEQ_RegTask((1U << CFG_SEQ_Task_BTN), 0, PushBtnTask);
 
   if(nodeType == 'E')
@@ -163,6 +170,41 @@ void SubghzApp_Init(void)
 }
 
 /* USER CODE BEGIN EF */
+
+/*Enable ACTIVE MODE
+  Enabling Active Mode including waking all other MCUs.
+  Call this function upon receiving a WOR packet in CAD mode.
+  */
+void EnableActiveMode()
+{
+  activeMode = true;
+  HAL_GPIO_WritePin(WAKE_MCU2_GPIO_Port, WAKE_MCU2_Pin, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(WAKE_MCU3_GPIO_Port, WAKE_MCU3_Pin, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(WAKE_MCU4_GPIO_Port, WAKE_MCU4_Pin, GPIO_PIN_SET);
+}
+
+/*DISABLE ACTIVE MODE 
+    if Transmit_Buffer is empty (i.e. no packet pending to be tranmitted) 
+    and not awaiting a WOR Acknowlegement 
+    and not awaiting a transmission end flag
+    and not currently engaged in standby packet monitoring
+  */ 
+bool DisableActiveMode(void)
+{
+  if(Transmit_Buffer.count == 0U && !awaitingWorAck && !awaitingTransmissionEndFlag && !inStandbyMode)
+  {
+    activeMode = false;
+    HAL_GPIO_WritePin(WAKE_MCU2_GPIO_Port, WAKE_MCU2_Pin, GPIO_PIN_SET);
+    HAL_GPIO_WritePin(WAKE_MCU3_GPIO_Port, WAKE_MCU3_Pin, GPIO_PIN_SET);
+    HAL_GPIO_WritePin(WAKE_MCU4_GPIO_Port, WAKE_MCU4_Pin, GPIO_PIN_SET);
+    return true;
+  }
+  else
+  {
+    return false;
+  }
+}
+
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
   if (GPIO_Pin == BTN_GPIO_EXTI9_Pin)
@@ -203,6 +245,13 @@ static void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t LoraS
   packetString = Packet_To_String(&receivedPacket);
   APP_LOG(TS_OFF, VLEVEL_M, "RX done, size=%u, RSSI=%d, SNR=%d, %s\r\n",
           size, rssi, LoraSnr_FskCfo, packetString);
+
+  //If in CAD mode and received a valid packet, switch to active mode
+  if (!activeMode) //?? Later Update to check if it's a WOR packet with same nearestGwID
+  {
+    APP_LOG(TS_OFF, VLEVEL_M, "Packet detected, switching to active mode\r\n");
+    EnableActiveMode();
+  }
 
   if (receivedPacket.rxNodeID != nodeID && receivedPacket.direction != PACKET_DIRECTION_BROADCAST)
   {

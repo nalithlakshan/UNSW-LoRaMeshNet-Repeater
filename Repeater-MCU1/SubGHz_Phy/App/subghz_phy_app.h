@@ -39,7 +39,11 @@ typedef struct NeighbourInfo_s  // To hold any neighbouring node's info
 #define USE_MODEM_LORA  1
 #define USE_MODEM_FSK   0
 
-#define RF_FREQUENCY                                915100000 /* Hz */
+#define RF_FREQUENCY                                915000000 /* Hz */
+#define RF_FREQUENCY_WOR                            915000000 /* Hz */
+#define RF_FREQUENCY_RP_DATA                        915250000 /* Hz */
+#define RF_FREQUENCY_ED_DATA                        915500000 /* Hz */
+
 
 #ifndef TX_OUTPUT_POWER   /* please, to change this value, redefine it in USER CODE SECTION */
 #define TX_OUTPUT_POWER                             14        /* dBm */
@@ -78,7 +82,12 @@ extern uint8_t nodeID;
 extern char nodeType;
 extern double batteryPercentage;
 extern uint16_t distanceValue;
-extern bool activeMode;
+
+//Power Management Flags
+extern volatile bool activeMode;
+extern volatile bool awaitingWorAck;
+extern volatile bool awaitingTransmissionEndFlag;
+extern volatile bool inStandbyMode;
 
 // Routing Info
 extern NeighbourInfo_t Neighbours[MAX_NEIGHBOURS];
@@ -102,6 +111,8 @@ extern char direction;
 void SubghzApp_Init(void);
 
 /* USER CODE BEGIN EFP */
+void EnableActiveMode(void);
+bool DisableActiveMode(void);
 
 /* USER CODE END EFP */
 

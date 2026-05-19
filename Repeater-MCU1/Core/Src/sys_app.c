@@ -30,6 +30,7 @@
 #include "sys_debug.h"
 
 /* USER CODE BEGIN Includes */
+#include "subghz_phy_app.h"
 
 /* USER CODE END Includes */
 
@@ -125,6 +126,11 @@ void SystemApp_Init(void)
 void UTIL_SEQ_Idle(void)
 {
   /* USER CODE BEGIN UTIL_SEQ_Idle_1 */
+  DisableActiveMode();
+  if (activeMode == true)
+  {
+    return;
+  }
 
   /* USER CODE END UTIL_SEQ_Idle_1 */
   UTIL_LPM_EnterLowPower();

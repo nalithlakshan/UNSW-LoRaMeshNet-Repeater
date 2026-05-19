@@ -6,6 +6,7 @@
  */
 
 #include "cad_mode.h"
+#include "subghz_phy_app.h"
 
 #include "radio.h"
 #include "radio_driver.h"
@@ -20,7 +21,7 @@
 #define CAD_SCAN_PERIOD_MS           1000
 #define CAD_DET_PEAK                 28
 #define CAD_DET_MIN                  14
-#define CAD_RX_TIMEOUT_VALUE         4000
+#define CAD_RX_TIMEOUT_VALUE         2000
 
 static UTIL_TIMER_Object_t CadTimer;
 static uint32_t CadScanCounter = 0;
@@ -45,38 +46,44 @@ void CAD_Mode_Init(void)
 
 void CAD_Mode_OnCadDone(bool channelActivityDetected)
 {
-  cadActivityDetected = channelActivityDetected;
-  cadResultReady = true;
-
-  APP_LOG(TS_OFF, VLEVEL_M, "CAD done: %s\r\n",
+  if(activeMode){ // In active mode, performing CAD on demand for carrier sensing
+    cadActivityDetected = channelActivityDetected;
+    cadResultReady = true;
+    return;
+  }
+  else{ // In low power CAD mode, performing periodic CAD
+    APP_LOG(TS_OFF, VLEVEL_M, "CAD done: %s\r\n",
           channelActivityDetected ? "activity detected" : "channel clear");
 
-  if (channelActivityDetected == false)
-  {
-    Radio.Sleep();
-  }
-  else
-  {
-    Radio.Rx(CAD_RX_TIMEOUT_VALUE);
+    if (channelActivityDetected){
+      Radio.Rx(CAD_RX_TIMEOUT_VALUE);
+    }
+    else{
+      Radio.Sleep();
+    }
   }
 }
 
 static void CadTimerCb(void *context)
 {
   (void)context;
-  UTIL_SEQ_SetTask((1U << CFG_SEQ_Task_LoRaCadScan), CFG_SEQ_Prio_0);
+  if (!activeMode) //run if in CAD mode
+  {
+    UTIL_SEQ_SetTask((1U << CFG_SEQ_Task_LoRaCadScan), CFG_SEQ_Prio_0);
+  }
 }
 
 static void CAD_Scan(void)
 {
   if (Radio.GetStatus() != RF_IDLE)
   {
-    APP_LOG(TS_OFF, VLEVEL_M, "CAD skipped, radio busy\r\n");
+    APP_LOG(TS_OFF, VLEVEL_M, "CAD skipped, radio busy (Status: %d)\r\n", Radio.GetStatus());
     return;
   }
 
   CadScanCounter++;
   APP_LOG(TS_OFF, VLEVEL_M, "CAD scan #%u\r\n", (unsigned int)CadScanCounter);
+  Radio.SetChannel(RF_FREQUENCY_WOR);
   Radio.StartCad();
 }
 

@@ -103,7 +103,7 @@ int main(void)
   MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
 
-  // HAL_GPIO_WritePin(LED2_GPIO_Port, LED2_Pin, 1); // Turn on LED2 to indicate that the system is running
+  HAL_GPIO_WritePin(LED2_GPIO_Port, LED2_Pin, GPIO_PIN_SET); // Turn on LED2 to indicate that the system is running
   
   HAL_GPIO_WritePin(LOAD_SWITCH_GPIO_Port, LOAD_SWITCH_Pin, 1);
 

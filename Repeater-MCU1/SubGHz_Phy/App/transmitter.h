@@ -31,6 +31,7 @@ extern TransmitBuffer_t Transmit_Buffer;
 
 bool Transmitter_Submit(const LoRaPacket_t *packet);
 void Transmitter_TxLoop(void);
+void Transmitter_Init(void);
 void Transmitter_StartPeriodicED(void);
 void Transmitter_OnTxDone(void);
 void Transmitter_OnTxTimeout(void);

@@ -19,12 +19,14 @@
 #include "utilities_def.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
-#define TRANSMITTER_PERIOD_MS        2000
+#define TRANSMITTER_PERIOD_MS        3000
 #define MAX_PACKET_SIZE              256
 #define TRANSMITTER_UART_BUFFER_SIZE 512
 #define DEBUG_TX                     1
+
 #define TX_TIMEOUT_VALUE             3000
 #define TX_BACKOFF_MIN_MS            10U
 #define TX_BACKOFF_MAX_MS            50U
@@ -68,7 +70,7 @@ bool Transmitter_Submit(const LoRaPacket_t *packet)
     UTILS_EXIT_CRITICAL_SECTION();
 
     if(startTxLoop){
-        Transmitter_TxLoop();
+        UTIL_SEQ_SetTask((1U << CFG_SEQ_Task_LoRaTxLoop), CFG_SEQ_Prio_0);
     }
 
 
@@ -97,7 +99,14 @@ void Transmitter_TxLoop(void)
             break;
         }
 
+        // Setting the channel based on packet type
+        uint32_t channelFreq = (packetToTransmit.packetType == PACKET_TYPE_DATA) ? RF_FREQUENCY_RP_DATA : RF_FREQUENCY_WOR;
+        Radio.SetChannel(channelFreq);
+
+        // Encode the packet into a byte buffer for transmission
         EncodedTxPktSize = Packet_Encode(&packetToTransmit, EncodedTxPkt, sizeof(EncodedTxPkt));
+
+        // If encoding was successful, perform carrier sense and transmit
         if (EncodedTxPktSize > 0U)
         {
             bool channelFree = false;
@@ -106,10 +115,13 @@ void Transmitter_TxLoop(void)
             while (!channelFree || (Radio.GetStatus() != RF_IDLE))
             {
                 channelFree = false;
-                uint32_t backoffMs = TX_BACKOFF_MIN_MS +(Radio.Random() % (TX_BACKOFF_MAX_MS - TX_BACKOFF_MIN_MS + 1U));
+                uint32_t backoffMs = TX_BACKOFF_MIN_MS + ((uint32_t)rand() % (TX_BACKOFF_MAX_MS - TX_BACKOFF_MIN_MS + 1U));
                 HAL_Delay(backoffMs);
 
                 if (Radio.GetStatus() != RF_IDLE){
+                    if(DEBUG_TX){
+                        APP_LOG(TS_OFF, VLEVEL_M, "Radio busy (Status: %d), backing off!\r\n", Radio.GetStatus());
+                    }
                     continue;
                 }
 
@@ -123,16 +135,25 @@ void Transmitter_TxLoop(void)
                 }
 
                 channelFree = !cadActivityDetected;
-                if(!channelFree){
+                if(!channelFree && DEBUG_TX){
                     APP_LOG(TS_OFF, VLEVEL_M, "Channel is Busy!\r\n");
                 }       
             }
             
-            // Transmitting the Packet                  
+            // Transmitting the Packet 
+            if(DEBUG_TX){
+                APP_LOG(TS_OFF, VLEVEL_M, "Transmitting packet ID %u\r\n", packetToTransmit.packetID);
+            }
             Radio.Send(EncodedTxPkt, EncodedTxPktSize);
         }
     }
     txLoopRunning = false;
+}
+
+void Transmitter_Init(void)
+{
+    UTIL_SEQ_RegTask((1U << CFG_SEQ_Task_LoRaTxLoop), 0, Transmitter_TxLoop);
+    srand(HAL_GetTick());
 }
 
 void Transmitter_StartPeriodicED(void)
