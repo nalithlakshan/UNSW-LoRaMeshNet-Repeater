@@ -75,8 +75,8 @@ void Error_Handler(void);
 #define BTN_GPIO_EXTI9_EXTI_IRQn EXTI9_5_IRQn
 #define LED2_Pin GPIO_PIN_2
 #define LED2_GPIO_Port GPIOB
-#define WAKE_MCU4_Pin GPIO_PIN_12
-#define WAKE_MCU4_GPIO_Port GPIOB
+#define WAKE_INT_MCU4_Pin GPIO_PIN_12
+#define WAKE_INT_MCU4_GPIO_Port GPIOB
 #define LED1_Pin GPIO_PIN_10
 #define LED1_GPIO_Port GPIOA
 #define WAKE_MCU2_Pin GPIO_PIN_15
