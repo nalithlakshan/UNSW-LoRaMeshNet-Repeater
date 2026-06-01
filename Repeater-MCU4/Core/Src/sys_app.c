@@ -125,7 +125,10 @@ void SystemApp_Init(void)
 void UTIL_SEQ_Idle(void)
 {
   /* USER CODE BEGIN UTIL_SEQ_Idle_1 */
-
+  if(HAL_GPIO_ReadPin(BTN_GPIO_EXTI9_GPIO_Port, BTN_GPIO_EXTI9_Pin) == GPIO_PIN_RESET)
+  {
+    return; // Stay active if the button is pressed
+  }
   /* USER CODE END UTIL_SEQ_Idle_1 */
   UTIL_LPM_EnterLowPower();
   /* USER CODE BEGIN UTIL_SEQ_Idle_2 */

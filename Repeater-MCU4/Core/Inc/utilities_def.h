@@ -77,7 +77,6 @@ typedef enum
 {
   CFG_SEQ_Task_SubGHz_Phy_App_Process,
   /* USER CODE BEGIN CFG_SEQ_Task_Id_t */
-  CFG_SEQ_Task_LoRaTx,
   CFG_SEQ_Task_LoRaCadScan,
   CFG_SEQ_Task_BTN,
 

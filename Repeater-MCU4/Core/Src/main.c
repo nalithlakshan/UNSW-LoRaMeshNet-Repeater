@@ -94,9 +94,11 @@ int main(void)
   MX_DMA_Init();
   MX_SubGHz_Phy_Init();
   MX_USART1_UART_Init();
-  MX_RTC_Init();
+  // MX_RTC_Init();
   MX_I2C2_Init();
   /* USER CODE BEGIN 2 */
+
+  HAL_GPIO_WritePin(LED2_GPIO_Port, LED2_Pin, GPIO_PIN_SET); // Turn on LED2 to indicate that the system is running
 
   /* USER CODE END 2 */
 
@@ -104,16 +106,6 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-//	  while(1){
-//	  HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, 1);
-//	  HAL_GPIO_WritePin(LED2_GPIO_Port, LED2_Pin, 0);
-//	  char msg[] = "This is an example only!!!\r\n";
-//	  HAL_UART_Transmit(&huart1, (uint8_t *)msg, sizeof(msg) - 1, HAL_MAX_DELAY);
-//	  HAL_Delay(1000);
-//	  HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, 0);
-//	  HAL_GPIO_WritePin(LED2_GPIO_Port, LED2_Pin, 1);
-//	  HAL_Delay(1000);
-//	  }
     /* USER CODE END WHILE */
     MX_SubGHz_Phy_Process();
 
