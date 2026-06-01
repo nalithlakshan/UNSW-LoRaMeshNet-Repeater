@@ -81,6 +81,7 @@ typedef enum
   CFG_SEQ_Task_LoRaTxLoop,
   CFG_SEQ_Task_LoRaCadScan,
   CFG_SEQ_Task_BTN,
+  CFG_SEQ_Task_WakeIntMcu4,
 
   /* USER CODE END CFG_SEQ_Task_Id_t */
   CFG_SEQ_Task_NBR

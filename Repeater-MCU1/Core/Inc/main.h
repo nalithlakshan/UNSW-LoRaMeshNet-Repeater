@@ -77,6 +77,7 @@ void Error_Handler(void);
 #define LED2_GPIO_Port GPIOB
 #define WAKE_INT_MCU4_Pin GPIO_PIN_12
 #define WAKE_INT_MCU4_GPIO_Port GPIOB
+#define WAKE_INT_MCU4_EXTI_IRQn EXTI15_10_IRQn
 #define LED1_Pin GPIO_PIN_10
 #define LED1_GPIO_Port GPIOA
 #define WAKE_MCU2_Pin GPIO_PIN_15

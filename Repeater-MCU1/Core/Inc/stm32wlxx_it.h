@@ -64,6 +64,7 @@ void DMA1_Channel3_IRQHandler(void);
 void EXTI9_5_IRQHandler(void);
 void USART1_IRQHandler(void);
 void USART2_IRQHandler(void);
+void EXTI15_10_IRQHandler(void);
 void RTC_Alarm_IRQHandler(void);
 void SUBGHZ_Radio_IRQHandler(void);
 /* USER CODE BEGIN EFP */

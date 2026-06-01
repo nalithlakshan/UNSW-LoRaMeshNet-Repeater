@@ -115,7 +115,7 @@ static void OnRxError(void);
 /* USER CODE BEGIN PFP */
 
 static void PushBtnTask(void);
-static HAL_StatusTypeDef WakeMCU1andTransferData(uint8_t *data, uint16_t size);
+static HAL_StatusTypeDef WakeMCU1andTransferData(uint8_t *data);
 static void WakeMcu1ReleaseTimerCb(void *context);
 
 /* USER CODE END PFP */
@@ -215,7 +215,7 @@ static void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t LoraS
 
   Radio.Sleep();
   
-  WakeMCU1andTransferData(payload, size);
+  WakeMCU1andTransferData(RxTextBuf);
   
   /* USER CODE END OnRxDone */
 }
@@ -245,11 +245,16 @@ static void OnRxError(void)
 
 /* USER CODE BEGIN PrFD */
 
-static HAL_StatusTypeDef WakeMCU1andTransferData(uint8_t *data, uint16_t size)
+static HAL_StatusTypeDef WakeMCU1andTransferData(uint8_t *data)
 {
   HAL_StatusTypeDef status;
   uint32_t retryStartTick;
   uint32_t retryDelay;
+
+  if (data == NULL)
+  {
+    return HAL_ERROR;
+  }
 
   // Wake up MCU1
   HAL_GPIO_WritePin(WAKE_MCU1_GPIO_Port, WAKE_MCU1_Pin, GPIO_PIN_SET);
@@ -273,7 +278,7 @@ static HAL_StatusTypeDef WakeMCU1andTransferData(uint8_t *data, uint16_t size)
   status = HAL_I2C_Master_Transmit(&hi2c2,
                                    (uint16_t)(MCU1_I2C_ADDRESS_7BIT << 1),
                                    data,
-                                   size,
+                                   MAX_APP_BUFFER_SIZE,
                                    I2C_TX_TIMEOUT_MS);
 
   // If transfer is successful, start timer to release MCU1 from wakeup after a delay
@@ -285,7 +290,7 @@ static HAL_StatusTypeDef WakeMCU1andTransferData(uint8_t *data, uint16_t size)
   else
   {
     HAL_GPIO_WritePin(WAKE_MCU1_GPIO_Port, WAKE_MCU1_Pin, GPIO_PIN_RESET);
-    APP_LOG(TS_OFF, VLEVEL_M, "Failed to transfer data to MCU1\r\n");
+    APP_LOG(TS_OFF, VLEVEL_M, "Failed to transfer data to MCU1 (status=%d)\r\n", (int)status);
   }
 
   return status;

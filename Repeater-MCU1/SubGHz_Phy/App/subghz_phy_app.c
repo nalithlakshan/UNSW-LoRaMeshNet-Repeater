@@ -66,8 +66,6 @@ char direction = 'U';  // 'U' for upstream, 'D' for downstream, 'B' for broadcas
 #define MAX_APP_BUFFER_SIZE          255
 #define TX_TIMEOUT_VALUE             3000
 
-#define MCU2_I2C_ADDRESS_7BIT        12
-#define I2C_TX_TIMEOUT_MS            100
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -111,7 +109,7 @@ static void OnRxError(void);
 /* USER CODE BEGIN PFP */
 
 static void PushBtnTask(void);
-static HAL_StatusTypeDef WakeMcu2AndSendString(const char *message);
+static void WakeIntMcu4Task(void);
 
 /* USER CODE END PFP */
 
@@ -153,16 +151,17 @@ void SubghzApp_Init(void)
   /*  Register Sequencer Tasks */
   Transmitter_Init();
   UTIL_SEQ_RegTask((1U << CFG_SEQ_Task_BTN), 0, PushBtnTask);
+  UTIL_SEQ_RegTask((1U << CFG_SEQ_Task_WakeIntMcu4), 0, WakeIntMcu4Task);
 
-  if(nodeType == 'E')
-  {
-    Transmitter_StartPeriodicED();
-  }
+  // if(nodeType == 'E')
+  // {
+  //   Transmitter_StartPeriodicED();
+  // }
 
-  if(nodeType == 'R')
-  {
-    CAD_Mode_Init();
-  }
+  // if(nodeType == 'R')
+  // {
+  //   CAD_Mode_Init();
+  // }
 
   HAL_GPIO_WritePin(WAKE_MCU2_GPIO_Port, WAKE_MCU2_Pin, GPIO_PIN_RESET);
 
@@ -208,6 +207,10 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
   if (GPIO_Pin == BTN_GPIO_EXTI9_Pin)
   {
     UTIL_SEQ_SetTask((1U << CFG_SEQ_Task_BTN), CFG_SEQ_Prio_0);
+  }
+  else if (GPIO_Pin == WAKE_INT_MCU4_Pin)
+  {
+    UTIL_SEQ_SetTask((1U << CFG_SEQ_Task_WakeIntMcu4), CFG_SEQ_Prio_0);
   }
 }
 
@@ -320,47 +323,14 @@ static void OnRxError(void)
 
 /* USER CODE BEGIN PrFD */
 
-static HAL_StatusTypeDef WakeMcu2AndSendString(const char *message)
-{
-  HAL_StatusTypeDef status;
-  uint16_t messageLength;
-
-  if (message == NULL)
-  {
-    return HAL_ERROR;
-  }
-
-  messageLength = (uint16_t)strlen(message);
-  if (messageLength == 0U)
-  {
-    return HAL_OK;
-  }
-
-  HAL_GPIO_WritePin(WAKE_MCU2_GPIO_Port, WAKE_MCU2_Pin, GPIO_PIN_SET);
-  HAL_Delay(10);
-  HAL_GPIO_WritePin(WAKE_MCU2_GPIO_Port, WAKE_MCU2_Pin, GPIO_PIN_RESET);
-  HAL_Delay(100);
-
-  status = HAL_I2C_Master_Transmit(&hi2c2,
-                                   (uint16_t)(MCU2_I2C_ADDRESS_7BIT << 1),
-                                   (uint8_t *)message,
-                                   messageLength,
-                                   I2C_TX_TIMEOUT_MS);
-
-  return status;
-}
-
 static void PushBtnTask(void)
 {
-  HAL_GPIO_TogglePin(LED2_GPIO_Port, LED2_Pin);
+  APP_LOG(TS_OFF, VLEVEL_M, "Push Button Pressed\r\n");
+}
 
-  if (WakeMcu2AndSendString("Hello World from MCU1") == HAL_OK)
-  {
-    APP_LOG(TS_OFF, VLEVEL_M, "I2C message sent to MCU2\r\n");
-  }
-  else
-  {
-    APP_LOG(TS_OFF, VLEVEL_M, "I2C message send to MCU2 failed\r\n");
-  }
+
+static void WakeIntMcu4Task(void)
+{
+  APP_LOG(TS_OFF, VLEVEL_M, "MCU4 Wake Int Pin Toggled\r\n");
 }
 /* USER CODE END PrFD */
