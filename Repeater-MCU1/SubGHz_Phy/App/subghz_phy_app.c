@@ -63,7 +63,7 @@ char direction = 'U';  // 'U' for upstream, 'D' for downstream, 'B' for broadcas
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define MAX_APP_BUFFER_SIZE          255
+#define MAX_APP_BUFFER_SIZE          64
 #define TX_TIMEOUT_VALUE             3000
 
 /* USER CODE END PD */
@@ -226,7 +226,8 @@ void HAL_I2C_SlaveRxCpltCallback(I2C_HandleTypeDef *hi2c)
     if (hi2c->Instance == I2C2)
     {
       // Process received data here
-
+      LoRaPacket_t receivedPacket = Packet_Decode(I2CRxBuffer);
+      APP_LOG(TS_OFF, VLEVEL_M, "Received I2C packet: %s\r\n", Packet_To_String(&receivedPacket));
       HAL_I2C_Slave_Receive_IT(&hi2c2, I2CRxBuffer, MAX_APP_BUFFER_SIZE);
     }
 }
@@ -235,8 +236,7 @@ void HAL_I2C_ErrorCallback(I2C_HandleTypeDef *hi2c)
 {
     if (hi2c->Instance == I2C2)
     {
-      // Process received data here
-
+      APP_LOG(TS_OFF, VLEVEL_M, "I2C Error Callback triggered. error=0x%X\r\n", (unsigned int)HAL_I2C_GetError(&hi2c2));
       HAL_I2C_Slave_Receive_IT(&hi2c2, I2CRxBuffer, MAX_APP_BUFFER_SIZE);
     }
 }
@@ -359,5 +359,6 @@ static void PushBtnTask(void)
 static void WakeIntMcu4Task(void)
 {
   APP_LOG(TS_OFF, VLEVEL_M, "MCU4 Wake Int Pin Toggled\r\n");
+  HAL_I2C_Slave_Receive_IT(&hi2c2, I2CRxBuffer, MAX_APP_BUFFER_SIZE);
 }
 /* USER CODE END PrFD */

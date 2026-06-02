@@ -51,8 +51,8 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define MAX_APP_BUFFER_SIZE          255
-#define MCU1_I2C_ADDRESS_7BIT        0x11
+#define MAX_APP_BUFFER_SIZE          64
+#define MCU1_I2C_ADDRESS_7BIT        0x10
 #define WAKE_MCU1_WAKEUP_DELAY_MS    10
 #define WAKE_MCU1_RELEASE_DELAY_MS   2000
 #define I2C_BUSY_RETRY_TIMEOUT_MS    2000
@@ -273,7 +273,8 @@ static HAL_StatusTypeDef WakeMCU1andTransferData(uint8_t *data)
     if (status == HAL_OK)
     {
       APP_LOG(TS_OFF, VLEVEL_M, "Data transferred to MCU1\r\n");
-      UTIL_TIMER_Start(&WakeMcu1ReleaseTimer);
+      HAL_GPIO_WritePin(WAKE_MCU1_GPIO_Port, WAKE_MCU1_Pin, GPIO_PIN_RESET);
+      // UTIL_TIMER_Start(&WakeMcu1ReleaseTimer);
       return HAL_OK;
     }
 
