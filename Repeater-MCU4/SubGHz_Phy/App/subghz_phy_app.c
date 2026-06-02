@@ -52,7 +52,7 @@
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 #define MAX_APP_BUFFER_SIZE          255
-#define MCU1_I2C_ADDRESS_7BIT        1
+#define MCU1_I2C_ADDRESS_7BIT        0x11
 #define WAKE_MCU1_WAKEUP_DELAY_MS    10
 #define WAKE_MCU1_RELEASE_DELAY_MS   2000
 #define I2C_BUSY_RETRY_TIMEOUT_MS    2000
@@ -260,39 +260,44 @@ static HAL_StatusTypeDef WakeMCU1andTransferData(uint8_t *data)
   HAL_GPIO_WritePin(WAKE_MCU1_GPIO_Port, WAKE_MCU1_Pin, GPIO_PIN_SET);
   HAL_Delay(WAKE_MCU1_WAKEUP_DELAY_MS);
 
-  //If I2C bus is busy, wait until it's free
+  // Attempt to transfer data with retry on arbitration loss
   retryStartTick = HAL_GetTick();
-  while (__HAL_I2C_GET_FLAG(&hi2c2, I2C_FLAG_BUSY) != RESET)
+  while ((HAL_GetTick() - retryStartTick) < I2C_BUSY_RETRY_TIMEOUT_MS)
   {
-    if ((HAL_GetTick() - retryStartTick) >= I2C_BUSY_RETRY_TIMEOUT_MS)
+    status = HAL_I2C_Master_Transmit(&hi2c2,
+                                     (uint16_t)(MCU1_I2C_ADDRESS_7BIT << 1),
+                                     data,
+                                     MAX_APP_BUFFER_SIZE,
+                                     I2C_TX_TIMEOUT_MS);
+
+    if (status == HAL_OK)
     {
-      APP_LOG(TS_OFF, VLEVEL_M, "I2C2 busy timeout before MCU1 transfer\r\n");
-      HAL_GPIO_WritePin(WAKE_MCU1_GPIO_Port, WAKE_MCU1_Pin, GPIO_PIN_RESET);
-      return HAL_TIMEOUT;
+      APP_LOG(TS_OFF, VLEVEL_M, "Data transferred to MCU1\r\n");
+      UTIL_TIMER_Start(&WakeMcu1ReleaseTimer);
+      return HAL_OK;
     }
-    retryDelay = ((uint32_t)rand() % I2C_BUSY_RETRY_MAX_DELAY_MS) + 1U;
-    HAL_Delay(retryDelay);
+
+    uint32_t err = HAL_I2C_GetError(&hi2c2);
+    if(err & HAL_I2C_ERROR_ARLO){
+      // This master lost arbitration. Back off and retry later
+      retryDelay = (rand() % I2C_BUSY_RETRY_MAX_DELAY_MS) +1;
+      APP_LOG(TS_OFF, VLEVEL_M, "I2C2 arbitration lost, will retry in %d ms\r\n", (int)retryDelay);
+      HAL_Delay(retryDelay);
+      continue;
+    }
+
+    // For other errors, break the loop and handle the error
+    APP_LOG(TS_OFF, VLEVEL_M, "I2C ERROR (status=%d, error=%u)\r\n", (int)status, err);
+    break;
   }
 
-  // Transfer data to MCU1 via I2C
-  status = HAL_I2C_Master_Transmit(&hi2c2,
-                                   (uint16_t)(MCU1_I2C_ADDRESS_7BIT << 1),
-                                   data,
-                                   MAX_APP_BUFFER_SIZE,
-                                   I2C_TX_TIMEOUT_MS);
-
-  // If transfer is successful, start timer to release MCU1 from wakeup after a delay
-  if (status == HAL_OK)
+  //Failed to transfer data after retries, reset wake pin and log error
+  HAL_GPIO_WritePin(WAKE_MCU1_GPIO_Port, WAKE_MCU1_Pin, GPIO_PIN_RESET);
+  APP_LOG(TS_OFF, VLEVEL_M, "Failed to transfer data to MCU1\r\n");
+  if ((HAL_GetTick() - retryStartTick) >= I2C_BUSY_RETRY_TIMEOUT_MS)
   {
-    APP_LOG(TS_OFF, VLEVEL_M, "Data transferred to MCU1\r\n");
-    (void)UTIL_TIMER_Start(&WakeMcu1ReleaseTimer);
+      status = HAL_TIMEOUT;
   }
-  else
-  {
-    HAL_GPIO_WritePin(WAKE_MCU1_GPIO_Port, WAKE_MCU1_Pin, GPIO_PIN_RESET);
-    APP_LOG(TS_OFF, VLEVEL_M, "Failed to transfer data to MCU1 (status=%d)\r\n", (int)status);
-  }
-
   return status;
 }
 

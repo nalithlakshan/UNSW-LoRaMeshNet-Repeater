@@ -84,6 +84,10 @@ static uint8_t RxTextBuf[MAX_APP_BUFFER_SIZE];
 uint16_t RxBufferSize = 0;  // Last  Received Buffer Size
 int8_t RssiValue = 0;       // Last  Received packer Rssi
 int8_t SnrValue = 0;        // Last  Received packer SNR (in Lora modulation)
+
+// PV for I2C
+static uint8_t I2CRxBuffer[MAX_APP_BUFFER_SIZE];
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -153,6 +157,9 @@ void SubghzApp_Init(void)
   UTIL_SEQ_RegTask((1U << CFG_SEQ_Task_BTN), 0, PushBtnTask);
   UTIL_SEQ_RegTask((1U << CFG_SEQ_Task_WakeIntMcu4), 0, WakeIntMcu4Task);
 
+  /* Arm I2C Receive */
+  HAL_I2C_Slave_Receive_IT(&hi2c2, I2CRxBuffer, MAX_APP_BUFFER_SIZE);
+
   // if(nodeType == 'E')
   // {
   //   Transmitter_StartPeriodicED();
@@ -212,6 +219,26 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
   {
     UTIL_SEQ_SetTask((1U << CFG_SEQ_Task_WakeIntMcu4), CFG_SEQ_Prio_0);
   }
+}
+
+void HAL_I2C_SlaveRxCpltCallback(I2C_HandleTypeDef *hi2c)
+{
+    if (hi2c->Instance == I2C2)
+    {
+      // Process received data here
+
+      HAL_I2C_Slave_Receive_IT(&hi2c2, I2CRxBuffer, MAX_APP_BUFFER_SIZE);
+    }
+}
+
+void HAL_I2C_ErrorCallback(I2C_HandleTypeDef *hi2c)
+{
+    if (hi2c->Instance == I2C2)
+    {
+      // Process received data here
+
+      HAL_I2C_Slave_Receive_IT(&hi2c2, I2CRxBuffer, MAX_APP_BUFFER_SIZE);
+    }
 }
 
 /* USER CODE END EF */
