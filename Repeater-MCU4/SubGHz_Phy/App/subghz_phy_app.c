@@ -141,7 +141,7 @@ void SubghzApp_Init(void)
 
   /*  Register Sequencer Tasks */
   UTIL_SEQ_RegTask((1U << CFG_SEQ_Task_BTN), 0, PushBtnTask);
-
+  I2cPktTransfer_Init();
 
   /* Initiate CAD Mode */
   CAD_Mode_Init();
@@ -202,8 +202,10 @@ static void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t LoraS
 
   Radio.Sleep();
   
-  WakeMCU1andTransferData(RxTextBuf);
-  
+  if (!I2cPktTransfer_Enqueue(RxTextBuf))
+  {
+    APP_LOG(TS_OFF, VLEVEL_M, "I2C packet FIFO full, packet dropped\r\n");
+  }
   /* USER CODE END OnRxDone */
 }
 

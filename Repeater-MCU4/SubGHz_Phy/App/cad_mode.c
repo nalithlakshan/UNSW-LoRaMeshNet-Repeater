@@ -21,7 +21,7 @@
 #define CAD_SCAN_PERIOD_MS           1000
 #define CAD_DET_PEAK                 28
 #define CAD_DET_MIN                  14
-#define CAD_RX_TIMEOUT_VALUE         3000
+#define CAD_RX_TIMEOUT_VALUE         1800
 
 static UTIL_TIMER_Object_t CadTimer;
 static uint32_t CadScanCounter = 0;

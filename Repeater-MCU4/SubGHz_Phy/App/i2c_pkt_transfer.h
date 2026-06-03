@@ -9,8 +9,11 @@
 #define APP_I2C_PKT_TRANSFER_H_
 
 #include "stm32wlxx_hal.h"
+#include <stdbool.h>
 #include <stdint.h>
 
+void I2cPktTransfer_Init(void);
+bool I2cPktTransfer_Enqueue(const uint8_t *packet);
 HAL_StatusTypeDef WakeMCU1andTransferData(uint8_t *data);
 
 #endif /* APP_I2C_PKT_TRANSFER_H_ */
