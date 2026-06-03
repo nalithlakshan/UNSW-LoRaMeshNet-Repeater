@@ -25,13 +25,17 @@
 #include "radio.h"
 
 /* USER CODE BEGIN Includes */
-#include "i2c.h"
 #include "main.h"
 #include "stm32_timer.h"
 #include "stm32_seq.h"
 #include <string.h>
+#include <stdlib.h>
 #include "radio_driver.h"
 #include "utilities_def.h"
+#include "usart.h"
+
+#include "i2c_pkt_transfer.h"
+#include "packet.h"
 /* USER CODE END Includes */
 
 /* External variables ---------------------------------------------------------*/
@@ -46,14 +50,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define MAX_APP_BUFFER_SIZE          255
-#define RX_TIMEOUT_VALUE             3000
-#define TX_TIMEOUT_VALUE             3000
-#define CAD_SCAN_PERIOD_MS           1000
-#define CAD_DET_PEAK                 28
-#define CAD_DET_MIN                  14
-#define MCU1_I2C_RX_TIMEOUT_MS       1000
-#define MCU1_EXPECTED_MSG_LEN        (sizeof("Hello World from MCU1") - 1U)
+
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -66,21 +63,13 @@
 static RadioEvents_t RadioEvents;
 
 /* USER CODE BEGIN PV */
-// PV for periodic transmission example
-static UTIL_TIMER_Object_t TxTimer;
-static uint8_t TxBuf[] = "Hello World!\r\n";
-static uint8_t TxCounter = 0;
 
-// PV for periodic CAD scan example
-static UTIL_TIMER_Object_t CadTimer;
-static uint32_t CadScanCounter = 0;
-
-// PV for Rx data
+// PV for Rx WOR packets
 static uint8_t RxTextBuf[MAX_APP_BUFFER_SIZE];
 uint16_t RxBufferSize = 0;  // Last  Received Buffer Size
 int8_t RssiValue = 0;       // Last  Received packer Rssi
 int8_t SnrValue = 0;        // Last  Received packer SNR (in Lora modulation)
-static uint8_t Mcu1I2cRxBuf[MCU1_EXPECTED_MSG_LEN + 1U];
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -115,20 +104,7 @@ static void OnRxError(void);
 
 /* USER CODE BEGIN PFP */
 
-/**
-  * @brief Function executed on Radio CAD Done event
-  * @param  channelActivityDetected true when activity is detected on the channel
-  */
-static void OnCadDone(bool channelActivityDetected);
-
-static void TxTimerCb(void *context);
-static void TxTask(void);
-
-static void CadTimerCb(void *context);
-static void CAD_Scan(void);
 static void PushBtnTask(void);
-static void Mcu1WakeRxTask(void);
-static void ReceiveI2cMessageFromMcu1(void);
 
 /* USER CODE END PFP */
 
@@ -151,59 +127,30 @@ void SubghzApp_Init(void)
 
   /* USER CODE BEGIN SubghzApp_Init_2 */
 
-  /* Radio Set frequency */
+  /* Radio Configuration for LoRa */
   Radio.SetChannel(RF_FREQUENCY);
-
-#if ((USE_MODEM_LORA == 1) && (USE_MODEM_FSK == 0))
-  Radio.SetChannel(RF_FREQUENCY);
-  Radio.SetTxConfig(MODEM_LORA, TX_OUTPUT_POWER, 0, LORA_BANDWIDTH,
-                    LORA_SPREADING_FACTOR, LORA_CODINGRATE,
-                    LORA_PREAMBLE_LENGTH, LORA_FIX_LENGTH_PAYLOAD_ON,
-                    true, 0, 0, LORA_IQ_INVERSION_ON, TX_TIMEOUT_VALUE);
   Radio.SetRxConfig(MODEM_LORA, LORA_BANDWIDTH, LORA_SPREADING_FACTOR,
                     LORA_CODINGRATE, 0, LORA_PREAMBLE_LENGTH,
                     LORA_SYMBOL_TIMEOUT, LORA_FIX_LENGTH_PAYLOAD_ON, 0,
-                    true, 0, 0, LORA_IQ_INVERSION_ON, false);
-  SUBGRF_SetCadParams(LORA_CAD_02_SYMBOL, CAD_DET_PEAK, CAD_DET_MIN,
-                      LORA_CAD_RX, 0);
+                    true, 0, 0, LORA_IQ_INVERSION_ON, true);
   Radio.SetMaxPayloadLength(MODEM_LORA, MAX_APP_BUFFER_SIZE);
   Radio.Sleep();
-#elif ((USE_MODEM_LORA == 0) && (USE_MODEM_FSK == 1))
-  Radio.SetTxConfig(MODEM_FSK, TX_OUTPUT_POWER, FSK_FDEV, 0,
-                    FSK_DATARATE, 0,
-                    FSK_PREAMBLE_LENGTH, FSK_FIX_LENGTH_PAYLOAD_ON,
-                    true, 0, 0, 0, TX_TIMEOUT_VALUE);
-  Radio.SetMaxPayloadLength(MODEM_FSK, MAX_APP_BUFFER_SIZE);
-#else
-#error "Please define a modulation in the subghz_phy_app.h file."
-#endif /* USE_MODEM_LORA | USE_MODEM_FSK */
 
-  UTIL_SEQ_RegTask((1U << CFG_SEQ_Task_LoRaTx), 0, TxTask);
-  UTIL_SEQ_RegTask((1U << CFG_SEQ_Task_LoRaCadScan), 0, CAD_Scan);
+  /*  Register Sequencer Tasks */
   UTIL_SEQ_RegTask((1U << CFG_SEQ_Task_BTN), 0, PushBtnTask);
-  UTIL_SEQ_RegTask((1U << CFG_SEQ_Task_MCU1WakeRx), 0, Mcu1WakeRxTask);
-
-  /* Periodic TX every 2000 ms */
-  UTIL_TIMER_Create(&TxTimer, 5000, UTIL_TIMER_PERIODIC, TxTimerCb, NULL);
-  // UTIL_TIMER_Start(&TxTimer);
-
-  /* Periodic LoRa CAD scan every 1000 ms */
-  UTIL_TIMER_Create(&CadTimer, CAD_SCAN_PERIOD_MS, UTIL_TIMER_PERIODIC, CadTimerCb, NULL);
-  UTIL_TIMER_Start(&CadTimer);
+  I2cPktTransfer_Init();
 
   /* USER CODE END SubghzApp_Init_2 */
 }
 
 /* USER CODE BEGIN EF */
+
+//Push button interrupt handling
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
   if (GPIO_Pin == BTN_GPIO_EXTI9_Pin)
   {
     UTIL_SEQ_SetTask((1U << CFG_SEQ_Task_BTN), CFG_SEQ_Prio_0);
-  }
-  else if (GPIO_Pin == WAKE_INT_MCU1_Pin)
-  {
-    UTIL_SEQ_SetTask((1U << CFG_SEQ_Task_MCU1WakeRx), CFG_SEQ_Prio_0);
   }
 }
 
@@ -213,41 +160,53 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 static void OnTxDone(void)
 {
   /* USER CODE BEGIN OnTxDone */
-  APP_LOG(TS_OFF, VLEVEL_M, "TX done\r\n");
-  Radio.SetChannel(RF_FREQUENCY);
-  Radio.Sleep();
+
   /* USER CODE END OnTxDone */
 }
 
 static void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t LoraSnr_FskCfo)
 {
   /* USER CODE BEGIN OnRxDone */
+  LoRaPacket_t receivedPacket;
+  const char *packetString;
 
   /* Clear BufferRx*/
   memset(RxTextBuf, 0, MAX_APP_BUFFER_SIZE);
 
   /* Record payload size*/
   RxBufferSize = size;
-  if (RxBufferSize <= MAX_APP_BUFFER_SIZE)
+  if (RxBufferSize > MAX_APP_BUFFER_SIZE)
   {
-    memcpy(RxTextBuf, payload, RxBufferSize);
+    APP_LOG(TS_OFF, VLEVEL_M, "RX packet too large, size=%u\r\n", RxBufferSize);
+    return;
   }
 
-  APP_LOG(TS_OFF, VLEVEL_M, "RX done, size=%u, RSSI=%d, SNR=%d, payload=\"%s\"\r\n",
-          size, rssi, LoraSnr_FskCfo, RxTextBuf);
+  memcpy(RxTextBuf, payload, RxBufferSize);
 
-  // Repeating the received packet after receiving it
-  APP_LOG(TS_OFF, VLEVEL_M, "Repeating the received packet\r\n");
-  Radio.SetChannel(RF_FREQUENCY+250000);
-  Radio.Send(payload, size);
+  if (RxBufferSize < LORA_PACKET_HEADER_SIZE)
+  {
+    APP_LOG(TS_OFF, VLEVEL_M, "RX packet too short, size=%u\r\n", RxBufferSize);
+    return;
+  }
+
+  receivedPacket = Packet_Decode(RxTextBuf);
+  packetString = Packet_To_String(&receivedPacket);
+  APP_LOG(TS_OFF, VLEVEL_M, "RX done, size=%u, RSSI=%d, SNR=%d, %s\r\n",
+          size, rssi, LoraSnr_FskCfo, packetString);
+
+  Radio.Sleep();
   
+  if (!I2cPktTransfer_Enqueue(RxTextBuf))
+  {
+    APP_LOG(TS_OFF, VLEVEL_M, "I2C packet FIFO full, packet dropped\r\n");
+  }
   /* USER CODE END OnRxDone */
 }
 
 static void OnTxTimeout(void)
 {
   /* USER CODE BEGIN OnTxTimeout */
-  APP_LOG(TS_OFF, VLEVEL_M, "TX timeout\r\n");
+  
   /* USER CODE END OnTxTimeout */
 }
 
@@ -269,99 +228,9 @@ static void OnRxError(void)
 
 /* USER CODE BEGIN PrFD */
 
-static void TxTimerCb(void *context)
-{
-  (void)context;
-  APP_LOG(TS_OFF, VLEVEL_M, "TxTimer Expired\r\n");
-  UTIL_SEQ_SetTask((1U << CFG_SEQ_Task_LoRaTx), CFG_SEQ_Prio_0);
-}
-
-static void TxTask(void)
-{
-//  HAL_GPIO_TogglePin(LED1_GPIO_Port, LED1_Pin);
-  if (Radio.GetStatus() != RF_IDLE)
-  {
-    APP_LOG(TS_OFF, VLEVEL_M, "TX skipped, radio busy\r\n");
-    return;
-  }
-
-  TxCounter = TxCounter + 1U;
-  APP_LOG(TS_OFF, VLEVEL_M, "TX counter = %u\r\n", TxCounter);
-  Radio.Send(TxBuf, PAYLOAD_LEN);
-  // int i = 0;
-  // while(i<10000000){
-	//   i = i+1;
-  // }
-}
-
-static void OnCadDone(bool channelActivityDetected)
-{
-  /* USER CODE BEGIN OnCadDone */
-  APP_LOG(TS_OFF, VLEVEL_M, "CAD done: %s\r\n",
-          channelActivityDetected ? "activity detected" : "channel clear");
-
-  if (channelActivityDetected == false)
-  {
-    Radio.Sleep();
-  }
-  else
-  {
-    // Channel activity detected, we can decide to receive or transmit
-    // For example, we can start receiving
-    Radio.Rx(RX_TIMEOUT_VALUE);
-  }
-  /* USER CODE END OnCadDone */
-}
-
-static void CadTimerCb(void *context)
-{
-  (void)context;
-  UTIL_SEQ_SetTask((1U << CFG_SEQ_Task_LoRaCadScan), CFG_SEQ_Prio_0);
-}
-
-static void CAD_Scan(void)
-{
-  if (Radio.GetStatus() != RF_IDLE)
-  {
-    APP_LOG(TS_OFF, VLEVEL_M, "CAD skipped, radio busy\r\n");
-    return;
-  }
-
-  CadScanCounter++;
-  APP_LOG(TS_OFF, VLEVEL_M, "CAD scan #%u\r\n", (unsigned int)CadScanCounter);
-  Radio.StartCad();
-}
-
-static void ReceiveI2cMessageFromMcu1(void)
-{
-  HAL_StatusTypeDef status;
-
-  memset(Mcu1I2cRxBuf, 0, sizeof(Mcu1I2cRxBuf));
-  status = HAL_I2C_Slave_Receive(&hi2c2,
-                                 Mcu1I2cRxBuf,
-                                 MCU1_EXPECTED_MSG_LEN,
-                                 MCU1_I2C_RX_TIMEOUT_MS);
-
-  if (status == HAL_OK)
-  {
-    Mcu1I2cRxBuf[MCU1_EXPECTED_MSG_LEN] = '\0';
-    APP_LOG(TS_OFF, VLEVEL_M, "I2C message from MCU1: \"%s\"\r\n", Mcu1I2cRxBuf);
-  }
-  else
-  {
-    APP_LOG(TS_OFF, VLEVEL_M, "I2C receive from MCU1 failed, status=%d, error=0x%X\r\n",
-            (unsigned int)status, (unsigned int)HAL_I2C_GetError(&hi2c2));
-  }
-}
-
-static void Mcu1WakeRxTask(void)
-{
-  APP_LOG(TS_OFF, VLEVEL_M, "Wake interrupt from MCU1 detected\r\n");
-  ReceiveI2cMessageFromMcu1();
-}
-
 static void PushBtnTask(void)
 {
-  HAL_GPIO_TogglePin(LED2_GPIO_Port, LED2_Pin);
+  APP_LOG(TS_OFF, VLEVEL_M, "Push Button Pressed\r\n");
 }
+
 /* USER CODE END PrFD */
