@@ -33,9 +33,9 @@
 #include "radio_driver.h"
 #include "utilities_def.h"
 #include "usart.h"
-#include "i2c.h"
 
 #include "cad_mode.h"
+#include "i2c_pkt_transfer.h"
 #include "packet.h"
 /* USER CODE END Includes */
 
@@ -51,13 +51,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define MAX_APP_BUFFER_SIZE          64
-#define MCU1_I2C_ADDRESS_7BIT        0x10
-#define WAKE_MCU1_WAKEUP_DELAY_MS    10
-#define WAKE_MCU1_RELEASE_DELAY_MS   2000
-#define I2C_BUSY_RETRY_TIMEOUT_MS    2000
-#define I2C_BUSY_RETRY_MAX_DELAY_MS  20
-#define I2C_TX_TIMEOUT_MS            100
+
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -76,9 +70,6 @@ static uint8_t RxTextBuf[MAX_APP_BUFFER_SIZE];
 uint16_t RxBufferSize = 0;  // Last  Received Buffer Size
 int8_t RssiValue = 0;       // Last  Received packer Rssi
 int8_t SnrValue = 0;        // Last  Received packer SNR (in Lora modulation)
-
-// PV for I2C communication with MCU1
-static UTIL_TIMER_Object_t WakeMcu1ReleaseTimer;
 
 /* USER CODE END PV */
 
@@ -115,8 +106,6 @@ static void OnRxError(void);
 /* USER CODE BEGIN PFP */
 
 static void PushBtnTask(void);
-static HAL_StatusTypeDef WakeMCU1andTransferData(uint8_t *data);
-static void WakeMcu1ReleaseTimerCb(void *context);
 
 /* USER CODE END PFP */
 
@@ -153,8 +142,6 @@ void SubghzApp_Init(void)
   /*  Register Sequencer Tasks */
   UTIL_SEQ_RegTask((1U << CFG_SEQ_Task_BTN), 0, PushBtnTask);
 
-  UTIL_TIMER_Create(&WakeMcu1ReleaseTimer, WAKE_MCU1_RELEASE_DELAY_MS,
-                    UTIL_TIMER_ONESHOT, WakeMcu1ReleaseTimerCb, NULL);
 
   /* Initiate CAD Mode */
   CAD_Mode_Init();
@@ -244,72 +231,6 @@ static void OnRxError(void)
 }
 
 /* USER CODE BEGIN PrFD */
-
-static HAL_StatusTypeDef WakeMCU1andTransferData(uint8_t *data)
-{
-  HAL_StatusTypeDef status;
-  uint32_t retryStartTick;
-  uint32_t retryDelay;
-
-  if (data == NULL)
-  {
-    return HAL_ERROR;
-  }
-
-  // Wake up MCU1
-  HAL_GPIO_WritePin(WAKE_MCU1_GPIO_Port, WAKE_MCU1_Pin, GPIO_PIN_SET);
-  HAL_Delay(WAKE_MCU1_WAKEUP_DELAY_MS);
-
-  // Attempt to transfer data with retry on arbitration loss
-  retryStartTick = HAL_GetTick();
-  while ((HAL_GetTick() - retryStartTick) < I2C_BUSY_RETRY_TIMEOUT_MS)
-  {
-    status = HAL_I2C_Master_Transmit(&hi2c2,
-                                     (uint16_t)(MCU1_I2C_ADDRESS_7BIT << 1),
-                                     data,
-                                     MAX_APP_BUFFER_SIZE,
-                                     I2C_TX_TIMEOUT_MS);
-
-    if (status == HAL_OK)
-    {
-      APP_LOG(TS_OFF, VLEVEL_M, "Data transferred to MCU1\r\n");
-      HAL_GPIO_WritePin(WAKE_MCU1_GPIO_Port, WAKE_MCU1_Pin, GPIO_PIN_RESET);
-      // UTIL_TIMER_Start(&WakeMcu1ReleaseTimer);
-      return HAL_OK;
-    }
-
-    uint32_t err = HAL_I2C_GetError(&hi2c2);
-    if(err & HAL_I2C_ERROR_ARLO){
-      // This master lost arbitration. Back off and retry later
-      retryDelay = (rand() % I2C_BUSY_RETRY_MAX_DELAY_MS) +1;
-      APP_LOG(TS_OFF, VLEVEL_M, "I2C2 arbitration lost, will retry in %d ms\r\n", (int)retryDelay);
-      HAL_Delay(retryDelay);
-      continue;
-    }
-
-    // For other errors, break the loop and handle the error
-    APP_LOG(TS_OFF, VLEVEL_M, "I2C ERROR (status=%d, error=%u)\r\n", (int)status, err);
-    break;
-  }
-
-  //Failed to transfer data after retries, reset wake pin and log error
-  HAL_GPIO_WritePin(WAKE_MCU1_GPIO_Port, WAKE_MCU1_Pin, GPIO_PIN_RESET);
-  APP_LOG(TS_OFF, VLEVEL_M, "Failed to transfer data to MCU1\r\n");
-  if ((HAL_GetTick() - retryStartTick) >= I2C_BUSY_RETRY_TIMEOUT_MS)
-  {
-      status = HAL_TIMEOUT;
-  }
-  return status;
-}
-
-
-static void WakeMcu1ReleaseTimerCb(void *context)
-{
-  (void)context;
-  HAL_GPIO_WritePin(WAKE_MCU1_GPIO_Port, WAKE_MCU1_Pin, GPIO_PIN_RESET);
-  APP_LOG(TS_OFF, VLEVEL_M, "MCU1 released from wakeup\r\n");
-}
-
 
 static void PushBtnTask(void)
 {

@@ -71,7 +71,7 @@ extern "C" {
 #define PAYLOAD_LEN                                 64
 
 /* USER CODE BEGIN EC */
-
+#define MAX_APP_BUFFER_SIZE                         64U
 /* USER CODE END EC */
 
 /* External variables --------------------------------------------------------*/
