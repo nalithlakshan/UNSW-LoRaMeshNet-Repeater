@@ -30,6 +30,7 @@
 #include "sys_debug.h"
 
 /* USER CODE BEGIN Includes */
+#include "radio.h"
 
 /* USER CODE END Includes */
 
@@ -129,6 +130,11 @@ void UTIL_SEQ_Idle(void)
   || HAL_GPIO_ReadPin(WAKE_INT_MCU1_GPIO_Port, WAKE_INT_MCU1_Pin) == GPIO_PIN_SET)
   {
     return;
+  }
+  if (Radio.GetStatus() != RF_IDLE)
+  {
+    Radio.Sleep();
+    APP_LOG(TS_OFF, VLEVEL_M, "Radio Sleeping\r\n");
   }
 
   /* USER CODE END UTIL_SEQ_Idle_1 */

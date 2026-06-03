@@ -131,7 +131,12 @@ void UTIL_SEQ_Idle(void)
   {
     return;
   }
-  Radio.Sleep();
+  if (Radio.GetStatus() != RF_IDLE)
+  {
+    Radio.Sleep();
+    APP_LOG(TS_OFF, VLEVEL_M, "Radio Sleeping\r\n");
+  }
+
   /* USER CODE END UTIL_SEQ_Idle_1 */
   UTIL_LPM_EnterLowPower();
   /* USER CODE BEGIN UTIL_SEQ_Idle_2 */

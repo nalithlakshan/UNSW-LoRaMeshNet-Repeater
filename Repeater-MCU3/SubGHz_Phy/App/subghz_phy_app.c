@@ -200,7 +200,7 @@ static void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t LoraS
   APP_LOG(TS_OFF, VLEVEL_M, "RX done, size=%u, RSSI=%d, SNR=%d, %s\r\n",
           size, rssi, LoraSnr_FskCfo, packetString);
 
-  Radio.Sleep();
+  Radio.Rx(0);
   
   if (!I2cPktTransfer_Enqueue(RxTextBuf))
   {
@@ -220,7 +220,7 @@ static void OnRxTimeout(void)
 {
   /* USER CODE BEGIN OnRxTimeout */
   APP_LOG(TS_OFF, VLEVEL_M, "RX timeout\r\n");
-  Radio.Sleep();
+  Radio.Rx(0);
   /* USER CODE END OnRxTimeout */
 }
 
@@ -228,7 +228,7 @@ static void OnRxError(void)
 {
   /* USER CODE BEGIN OnRxError */
   APP_LOG(TS_OFF, VLEVEL_M, "RX Error\r\n");
-  Radio.Sleep();
+  Radio.Rx(0);
   /* USER CODE END OnRxError */
 }
 
@@ -237,11 +237,13 @@ static void OnRxError(void)
 static void PushBtnTask(void)
 {
   APP_LOG(TS_OFF, VLEVEL_M, "Push Button Pressed\r\n");
+  Radio.Rx(0); // Go to Rx mode to receive on DATA-ED channel
 }
 
 static void WakeIntMcu1TTask(void)
 {
   APP_LOG(TS_OFF, VLEVEL_M, "Wake interrupt from MCU1\r\n");
+  Radio.Rx(0); // Go to Rx mode to receive on DATA-ED channel
 }
 
 /* USER CODE END PrFD */
