@@ -105,6 +105,7 @@ static void OnRxError(void);
 /* USER CODE BEGIN PFP */
 
 static void PushBtnTask(void);
+static void WakeIntMcu1TTask(void);
 
 /* USER CODE END PFP */
 
@@ -138,6 +139,7 @@ void SubghzApp_Init(void)
 
   /*  Register Sequencer Tasks */
   UTIL_SEQ_RegTask((1U << CFG_SEQ_Task_BTN), 0, PushBtnTask);
+  UTIL_SEQ_RegTask((1U << CFG_SEQ_Task_WakeIntMcu1), 0, WakeIntMcu1TTask);
   I2cPktTransfer_Init();
 
   /* USER CODE END SubghzApp_Init_2 */
@@ -151,6 +153,10 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
   if (GPIO_Pin == BTN_GPIO_EXTI9_Pin)
   {
     UTIL_SEQ_SetTask((1U << CFG_SEQ_Task_BTN), CFG_SEQ_Prio_0);
+  }
+  else if (GPIO_Pin == WAKE_INT_MCU1_Pin)
+  {
+    UTIL_SEQ_SetTask((1U << CFG_SEQ_Task_WakeIntMcu1), CFG_SEQ_Prio_0);
   }
 }
 
@@ -194,7 +200,7 @@ static void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t LoraS
   APP_LOG(TS_OFF, VLEVEL_M, "RX done, size=%u, RSSI=%d, SNR=%d, %s\r\n",
           size, rssi, LoraSnr_FskCfo, packetString);
 
-  Radio.Sleep();
+  Radio.Rx(0);
   
   if (!I2cPktTransfer_Enqueue(RxTextBuf))
   {
@@ -214,7 +220,7 @@ static void OnRxTimeout(void)
 {
   /* USER CODE BEGIN OnRxTimeout */
   APP_LOG(TS_OFF, VLEVEL_M, "RX timeout\r\n");
-  Radio.Sleep();
+  Radio.Rx(0);
   /* USER CODE END OnRxTimeout */
 }
 
@@ -222,7 +228,7 @@ static void OnRxError(void)
 {
   /* USER CODE BEGIN OnRxError */
   APP_LOG(TS_OFF, VLEVEL_M, "RX Error\r\n");
-  Radio.Sleep();
+  Radio.Rx(0);
   /* USER CODE END OnRxError */
 }
 
@@ -231,6 +237,13 @@ static void OnRxError(void)
 static void PushBtnTask(void)
 {
   APP_LOG(TS_OFF, VLEVEL_M, "Push Button Pressed\r\n");
+  Radio.Rx(0); // Go to Rx mode to receive on DATA-RP channel
+}
+
+static void WakeIntMcu1TTask(void)
+{
+  APP_LOG(TS_OFF, VLEVEL_M, "Wake interrupt from MCU1\r\n");
+  Radio.Rx(0); // Go to Rx mode to receive on DATA-RP channel
 }
 
 /* USER CODE END PrFD */

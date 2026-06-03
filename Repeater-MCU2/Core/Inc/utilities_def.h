@@ -79,6 +79,7 @@ typedef enum
   /* USER CODE BEGIN CFG_SEQ_Task_Id_t */
   CFG_SEQ_Task_BTN,
   CFG_SEQ_Task_I2cPktTransfer,
+  CFG_SEQ_Task_WakeIntMcu1,
 
   /* USER CODE END CFG_SEQ_Task_Id_t */
   CFG_SEQ_Task_NBR

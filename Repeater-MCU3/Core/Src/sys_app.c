@@ -125,6 +125,11 @@ void SystemApp_Init(void)
 void UTIL_SEQ_Idle(void)
 {
   /* USER CODE BEGIN UTIL_SEQ_Idle_1 */
+  if(HAL_GPIO_ReadPin(BTN_GPIO_EXTI9_GPIO_Port, BTN_GPIO_EXTI9_Pin) == GPIO_PIN_RESET
+  || HAL_GPIO_ReadPin(WAKE_INT_MCU1_GPIO_Port, WAKE_INT_MCU1_Pin) == GPIO_PIN_SET)
+  {
+    return;
+  }
 
   /* USER CODE END UTIL_SEQ_Idle_1 */
   UTIL_LPM_EnterLowPower();
