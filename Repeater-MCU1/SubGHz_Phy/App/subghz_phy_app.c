@@ -184,8 +184,8 @@ void SubghzApp_Init(void)
 void EnableActiveMode()
 {
   activeMode = true;
-  HAL_GPIO_WritePin(WAKE_MCU2_GPIO_Port, WAKE_MCU2_Pin, GPIO_PIN_SET);
-  HAL_GPIO_WritePin(WAKE_MCU3_GPIO_Port, WAKE_MCU3_Pin, GPIO_PIN_SET);
+  // HAL_GPIO_WritePin(WAKE_MCU2_GPIO_Port, WAKE_MCU2_Pin, GPIO_PIN_SET);
+  // HAL_GPIO_WritePin(WAKE_MCU3_GPIO_Port, WAKE_MCU3_Pin, GPIO_PIN_SET);
 }
 
 /*DISABLE ACTIVE MODE 
@@ -199,8 +199,8 @@ bool DisableActiveMode(void)
   if(Transmit_Buffer.count == 0U && !awaitingWorAck && !awaitingTransmissionEndFlag && !inStandbyMode)
   {
     activeMode = false;
-    HAL_GPIO_WritePin(WAKE_MCU2_GPIO_Port, WAKE_MCU2_Pin, GPIO_PIN_RESET);
-    HAL_GPIO_WritePin(WAKE_MCU3_GPIO_Port, WAKE_MCU3_Pin, GPIO_PIN_RESET);
+    // HAL_GPIO_WritePin(WAKE_MCU2_GPIO_Port, WAKE_MCU2_Pin, GPIO_PIN_RESET);
+    // HAL_GPIO_WritePin(WAKE_MCU3_GPIO_Port, WAKE_MCU3_Pin, GPIO_PIN_RESET);
     return true;
   }
   else

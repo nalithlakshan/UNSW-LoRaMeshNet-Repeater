@@ -100,10 +100,14 @@ void PWR_EnterStopMode(void)
 
   /* USER CODE BEGIN EnterStopMode_2 */
   HAL_GPIO_WritePin(LED2_GPIO_Port, LED2_Pin, GPIO_PIN_RESET); // Turn off LED2 to indicate that the system is entering stop mode
+  HAL_GPIO_WritePin(WAKE_MCU3_GPIO_Port, WAKE_MCU3_Pin, GPIO_PIN_RESET); // Make MCU3 sleep when MCU1 is entering stop mode
+  HAL_GPIO_WritePin(WAKE_MCU2_GPIO_Port, WAKE_MCU2_Pin, GPIO_PIN_RESET); // Make MCU2 sleep when MCU1 is entering stop mode
   /* USER CODE END EnterStopMode_2 */
   HAL_PWREx_EnterSTOP2Mode(PWR_STOPENTRY_WFI);
   /* USER CODE BEGIN EnterStopMode_3 */
   HAL_GPIO_WritePin(LED2_GPIO_Port, LED2_Pin, GPIO_PIN_SET); // Turn on LED2 to indicate that the system is running
+  HAL_GPIO_WritePin(WAKE_MCU3_GPIO_Port, WAKE_MCU3_Pin, GPIO_PIN_SET); // Wake MCU3 when MCU1 is waking up from stop mode
+  HAL_GPIO_WritePin(WAKE_MCU2_GPIO_Port, WAKE_MCU2_Pin, GPIO_PIN_SET); // Wake MCU2 when MCU1 is waking up from stop mode
   /* USER CODE END EnterStopMode_3 */
 }
 

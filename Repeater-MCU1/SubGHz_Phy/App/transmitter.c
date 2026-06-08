@@ -171,7 +171,7 @@ void Transmitter_StartPeriodicED(void)
     TxPacket.rxDistanceValue = 0;
     TxPacket.ackNodeID = 0;
     TxPacket.nearestGwID = nearestGatewayID;
-    TxPacket.packetType = PACKET_TYPE_DATA;
+    TxPacket.packetType = PACKET_TYPE_WOR;
     TxPacket.direction = PACKET_DIRECTION_UPSTREAM;
     TxPacket.preambleSize = LORA_PREAMBLE_LENGTH;
     TxPacket.payloadSize = (uint16_t)strlen(payload);

@@ -55,18 +55,18 @@ void MX_GPIO_Init(void)
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_RESET);
 
-  /*Configure GPIO pin : WAKE_INT_MCU1_Pin */
-  GPIO_InitStruct.Pin = WAKE_INT_MCU1_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(WAKE_INT_MCU1_GPIO_Port, &GPIO_InitStruct);
-
   /*Configure GPIO pins : WAKE_MCU1_Pin LED2_Pin */
   GPIO_InitStruct.Pin = WAKE_MCU1_Pin|LED2_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : WAKE_INT_MCU1_Pin */
+  GPIO_InitStruct.Pin = WAKE_INT_MCU1_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(WAKE_INT_MCU1_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pin : BTN_GPIO_EXTI9_Pin */
   GPIO_InitStruct.Pin = BTN_GPIO_EXTI9_Pin;
@@ -82,8 +82,8 @@ void MX_GPIO_Init(void)
   HAL_GPIO_Init(LED1_GPIO_Port, &GPIO_InitStruct);
 
   /* EXTI interrupt init*/
-  HAL_NVIC_SetPriority(EXTI3_IRQn, 0, 0);
-  HAL_NVIC_EnableIRQ(EXTI3_IRQn);
+  HAL_NVIC_SetPriority(EXTI4_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI4_IRQn);
 
   HAL_NVIC_SetPriority(EXTI9_5_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(EXTI9_5_IRQn);
