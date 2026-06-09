@@ -54,6 +54,7 @@ typedef struct
   uint16_t packetID;
   uint8_t packetType : 1;
   uint8_t direction : 2;
+  uint8_t positionLearningMode : 1;
   uint16_t preambleSize;
   uint16_t payloadSize;
   uint8_t payload[LORA_PACKET_MAX_PAYLOAD_SIZE];

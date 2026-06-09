@@ -23,7 +23,7 @@
   *                             | Bits 1-2: direction   (00-Broadcast, 01-Upstream, 10-Downstream)
   *                             | Bits 3-4: txNodeType  (00-Gateway, 01-End Device, 10-Repeater)
   *                             | Bits 5-6: rxNodeType  (00-Gateway, 01-End Device, 10-Repeater)
-  *                             | Bit  7  : reserved for future use
+  *                             | Bit  7  : positionLearningMode (0-Normal Operation, 1-Routing Mode)
   *
   * | 2   | txDistanceValue     | Distance value of the tx node
   * | 1   | txBatteryPercentage | Battery percentage of the tx node
@@ -67,11 +67,12 @@ uint16_t Packet_Encode(const LoRaPacket_t *packet, uint8_t *buffer, uint16_t buf
     return 0;
   }
 
-  // Construct flags byte from packetType, direction, txNodeType, and rxNodeType
+  // Construct flags byte from packetType, direction, txNodeType, rxNodeType, and positionLearningMode
   flags |= (uint8_t)((packet->packetType & 0x01) << 0U);
   flags |= (uint8_t)((packet->direction  & 0x03) << 1U);
   flags |= (uint8_t)((packet->txNodeType & 0x03) << 3U);
   flags |= (uint8_t)((packet->rxNodeType & 0x03) << 5U);
+  flags |= (uint8_t)((packet->positionLearningMode & 0x01) << 7U);
 
   // Encode header fields into buffer
   buffer[index++] = packet->txNodeID;
@@ -121,6 +122,7 @@ LoRaPacket_t Packet_Decode(const uint8_t *buffer)
   packet.direction = (uint8_t)((flags >> 1U) & 0x03U);
   packet.txNodeType = (uint8_t)((flags >> 3U) & 0x03U);
   packet.rxNodeType = (uint8_t)((flags >> 5U) & 0x03U);
+  packet.positionLearningMode = (uint8_t)((flags >> 7U) & 0x01U);
 
   packet.txDistanceValue      = (uint16_t)buffer[index++] << 8 |buffer[index++];
   packet.txBatteryPercentage  = buffer[index++];
@@ -171,11 +173,12 @@ const char *Packet_To_String(const LoRaPacket_t *packet)
 
   snprintf(PacketStringBuffer,
            sizeof(PacketStringBuffer),
-           "|SeqNr:%u/%u|%s-%c|Tx:%c%u(dv=%u,bat=%u%%)|Rx:%c%u(dv=%u)|Ack:%u|Gw:%u|pr=%u|pl=%u|%.*s|",
+           "|SeqNr:%u/%u|%s-%c|M:%u|Tx:%c%u(dv=%u,bat=%u%%)|Rx:%c%u(dv=%u)|Ack:%u|Gw:%u|pr=%u|pl=%u|%.*s|",
            originNodeID,
            sequenceNumber,
            packetTypeString,
            packetDirection,
+           packet->positionLearningMode,
            txNodeTypeChar,
            packet->txNodeID,
            packet->txDistanceValue,
