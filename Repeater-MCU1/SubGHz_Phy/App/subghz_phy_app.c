@@ -27,6 +27,7 @@
 
 #include "cad_mode.h"
 #include "packet.h"
+#include "position_learning.h"
 #include "transmitter.h"
 /* USER CODE END Includes */
 
@@ -154,6 +155,7 @@ void SubghzApp_Init(void)
 
   /*  Register Sequencer Tasks */
   Transmitter_Init();
+  PositionLearningInit();
   UTIL_SEQ_RegTask((1U << CFG_SEQ_Task_BTN), 0, PushBtnTask);
   UTIL_SEQ_RegTask((1U << CFG_SEQ_Task_WakeIntMcu4), 0, WakeIntMcu4Task);
 
@@ -353,6 +355,7 @@ static void OnRxError(void)
 static void PushBtnTask(void)
 {
   APP_LOG(TS_OFF, VLEVEL_M, "Push Button Pressed\r\n");
+  PositionLearningInitialBroadcast();
 }
 
 
