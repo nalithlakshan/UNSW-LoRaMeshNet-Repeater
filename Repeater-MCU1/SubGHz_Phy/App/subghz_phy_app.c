@@ -83,8 +83,8 @@ static RadioEvents_t RadioEvents;
 // PV for Rx data
 static uint8_t RxTextBuf[MAX_APP_BUFFER_SIZE];
 uint16_t RxBufferSize = 0;  // Last  Received Buffer Size
-int8_t RssiValue = 0;       // Last  Received packer Rssi
-int8_t SnrValue = 0;        // Last  Received packer SNR (in Lora modulation)
+int16_t RssiValue = 0;       // Last  Received packet Rssi
+int8_t SnrValue = 0;        // Last  Received packet SNR (in Lora modulation)
 
 // PV for I2C
 static uint8_t I2CRxBuffer[MAX_APP_BUFFER_SIZE];
