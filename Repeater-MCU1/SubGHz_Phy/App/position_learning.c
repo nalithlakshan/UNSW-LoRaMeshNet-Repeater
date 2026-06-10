@@ -42,6 +42,7 @@ void PositionLearningInitialBroadcast(void)
   }
   else
   {
+    initialPktCount = 0;
     return;
   }
 }
@@ -51,6 +52,10 @@ static void PositionLearningInitialBroadcastTimerCb(void *context)
   (void)context;
 
   APP_LOG(TS_OFF, VLEVEL_M,
+          "RP %u initiating position learning broadcast packet: %u\r\n",
+          nodeID,
+          initialPktCount);
+  MQTT_LOG(TS_OFF, VLEVEL_M,
           "RP %u initiating position learning broadcast packet: %u\r\n",
           nodeID,
           initialPktCount);
