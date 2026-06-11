@@ -89,6 +89,18 @@ void PositionLearningInitialBroadcast(void)
   }
 }
 
+void ReceivedPktHanderPL1(LoRaPacket_t *packet)
+{
+}
+
+void ReceivedPktHanderPL2(LoRaPacket_t *packet)
+{
+}
+
+void ReceivedPktHanderPL3(LoRaPacket_t *packet)
+{
+}
+
 static void PositionLearningInitialBroadcastTimerCb(void *context)
 {
   (void)context;

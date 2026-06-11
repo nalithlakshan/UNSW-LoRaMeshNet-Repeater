@@ -27,6 +27,7 @@
 
 #include "cad_mode.h"
 #include "packet.h"
+#include "packet_process.h"
 #include "position_learning.h"
 #include "transmitter.h"
 /* USER CODE END Includes */
@@ -230,6 +231,34 @@ void HAL_I2C_SlaveRxCpltCallback(I2C_HandleTypeDef *hi2c)
       // Process received data here
       LoRaPacket_t receivedPacket = Packet_Decode(I2CRxBuffer);
       APP_LOG(TS_OFF, VLEVEL_M, "Received I2C packet: %s\r\n", Packet_To_String(&receivedPacket));
+
+      // If not a broadcast packet and its nearestGwID doesn't match this repeater's nearestGwID, ignore the packet
+      if (receivedPacket.direction != PACKET_DIRECTION_BROADCAST && receivedPacket.nearestGwID != nearestGatewayID)
+      {
+        APP_LOG(TS_OFF, VLEVEL_M, "Packet not intended for this repeater, ignoring...\r\n");
+        HAL_I2C_Slave_Receive_IT(&hi2c2, I2CRxBuffer, MAX_APP_BUFFER_SIZE);
+        return;
+      }
+
+      /* RECORDING RECEIVED PACKET INFO
+       * If packetID not in processedPktBuf, add it to processedPktBuf
+       * Else if already in processedPktBuf and this repeater's DV > packet's Tx Device's DV, add it to lowerDistanceDuplicatePktBuf
+       * Else if already in processedPktBuf and this repeater's DV < packet's Tx Device's DV, add it to higherDistanceDuplicatePktBuf
+      **/
+      if (!PacketIDFifo_Search(&processedPktBuf, receivedPacket.packetID))
+      {
+        PacketIDFifo_Push(&processedPktBuf, receivedPacket.packetID);
+        APP_LOG(TS_OFF, VLEVEL_M, "New packet received, added to processed buffer\r\n");
+      }
+      else if((distanceValue >= receivedPacket.txDistanceValue) && !PacketIDFifo_Search(&lowerDistanceDuplicatePktBuf, receivedPacket.packetID))
+      {
+          PacketIDFifo_Push(&lowerDistanceDuplicatePktBuf, receivedPacket.packetID);
+      }
+      else if((distanceValue < receivedPacket.txDistanceValue) && !PacketIDFifo_Search(&higherDistanceDuplicatePktBuf, receivedPacket.packetID))
+      {
+          PacketIDFifo_Push(&higherDistanceDuplicatePktBuf, receivedPacket.packetID);
+      }
+
       HAL_I2C_Slave_Receive_IT(&hi2c2, I2CRxBuffer, MAX_APP_BUFFER_SIZE);
     }
 }

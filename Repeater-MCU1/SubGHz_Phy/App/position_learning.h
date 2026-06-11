@@ -12,8 +12,13 @@
 extern "C" {
 #endif
 
+#include "packet.h"
+
 void PositionLearningInit(void);
 void PositionLearningInitialBroadcast(void);
+void ReceivedPktHanderPL1(LoRaPacket_t *packet);
+void ReceivedPktHanderPL2(LoRaPacket_t *packet);
+void ReceivedPktHanderPL3(LoRaPacket_t *packet);
 
 #ifdef __cplusplus
 }
