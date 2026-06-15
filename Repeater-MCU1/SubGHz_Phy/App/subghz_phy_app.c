@@ -157,6 +157,7 @@ void SubghzApp_Init(void)
   /*  Register Sequencer Tasks */
   Transmitter_Init();
   PositionLearningInit();
+  PacketProcess_Init();
   UTIL_SEQ_RegTask((1U << CFG_SEQ_Task_BTN), 0, PushBtnTask);
   UTIL_SEQ_RegTask((1U << CFG_SEQ_Task_WakeIntMcu4), 0, WakeIntMcu4Task);
 
@@ -248,6 +249,8 @@ void HAL_I2C_SlaveRxCpltCallback(I2C_HandleTypeDef *hi2c)
       if (!PacketIDFifo_Search(&processedPktBuf, receivedPacket.packetID))
       {
         PacketIDFifo_Push(&processedPktBuf, receivedPacket.packetID);
+        PacketFifo_Push(&rxBuffer, &receivedPacket);
+        PacketProcess_Schedule();
         APP_LOG(TS_OFF, VLEVEL_M, "New packet received, added to processed buffer\r\n");
       }
       else if((distanceValue >= receivedPacket.txDistanceValue) && !PacketIDFifo_Search(&lowerDistanceDuplicatePktBuf, receivedPacket.packetID))
