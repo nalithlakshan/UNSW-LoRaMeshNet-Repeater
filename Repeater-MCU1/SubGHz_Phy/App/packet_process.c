@@ -28,9 +28,14 @@ PacketFifo_t standbyBuffer = {0};
 static void PacketProcess(void);
 static void PacketProcess_StandbyTimerCb(void *context);
 static bool PacketProcess_StartStandbyTimer(void);
+static void PacketProcess_WorAckToEdTimerCb(void *context);
+static bool PacketProcess_StartWorAckToEdTimer(const LoRaPacket_t *packet);
 static void PacketProcess_ReconfigureAndSubmit(LoRaPacket_t *packet);
 
 static UTIL_TIMER_Object_t StandbyTimers[MAX_PACKET_FIFO_SIZE];
+static UTIL_TIMER_Object_t WorAckToEdTimers[MAX_PACKET_FIFO_SIZE];
+static LoRaPacket_t worAckToEdPktBuffer[MAX_PACKET_FIFO_SIZE];
+static uint8_t WorAckToEdTimerIndexes[MAX_PACKET_FIFO_SIZE];
 
 /*-------------------------------------------------------------------------------------
  * Packet ID FIFO Functions: Push, Pop, Search, Remove, Clear 
@@ -132,6 +137,18 @@ bool PacketIDFifo_Remove(PacketIDFifo_t *fifo, uint16_t packetID)
   return true;
 }
 
+void PacketIDFifo_Clear(PacketIDFifo_t *fifo)
+{
+  if (fifo == NULL)
+  {
+    return;
+  }
+
+  fifo->head = 0U;
+  fifo->tail = 0U;
+  fifo->count = 0U;
+}
+
 /*-------------------------------------------------------------------------------------
  * Packet FIFO Functions: Push, Pop
  * Note: These will be used to queue LoRaPacket_t objects for processing
@@ -190,6 +207,13 @@ void PacketProcess_Init(void)
                       UTIL_TIMER_ONESHOT,
                       PacketProcess_StandbyTimerCb,
                       NULL);
+
+    WorAckToEdTimerIndexes[i] = i;
+    UTIL_TIMER_Create(&WorAckToEdTimers[i],
+                      WOR_ACK_TO_ED_TIMER_MAX_MS,
+                      UTIL_TIMER_ONESHOT,
+                      PacketProcess_WorAckToEdTimerCb,
+                      &WorAckToEdTimerIndexes[i]);
   }
 }
 
@@ -263,14 +287,10 @@ static void PacketProcess(void)
     }
 
     // Standby monitoring candidate from RP/GW:
-    if (((packet.txNodeType == PACKET_NODE_TYPE_REPEATER) ||
-         (packet.txNodeType == PACKET_NODE_TYPE_GATEWAY)) &&
-        (((packet.direction == PACKET_DIRECTION_UPSTREAM) &&
-          (packet.txDistanceValue > distanceValue) &&
-          (distanceValue > packet.rxDistanceValue)) ||
-         ((packet.direction == PACKET_DIRECTION_DOWNSTREAM) &&
-          (packet.txDistanceValue < distanceValue) &&
-          (distanceValue < packet.rxDistanceValue))))
+    if (((packet.txNodeType == PACKET_NODE_TYPE_REPEATER) ||(packet.txNodeType == PACKET_NODE_TYPE_GATEWAY)) &&
+        (packet.rxNodeID != 0) &&
+        (((packet.direction == PACKET_DIRECTION_UPSTREAM) && (packet.txDistanceValue > distanceValue) && (distanceValue > packet.rxDistanceValue)) ||
+         ((packet.direction == PACKET_DIRECTION_DOWNSTREAM) && (packet.txDistanceValue < distanceValue) && (distanceValue < packet.rxDistanceValue))))
     {
       if (PacketProcess_StartStandbyTimer())
       {
@@ -280,6 +300,26 @@ static void PacketProcess(void)
       else
       {
         APP_LOG(TS_OFF, VLEVEL_M, "Standby monitoring skipped, no timer available\r\n");
+      }
+
+      continue;
+    }
+
+    // ED packet without a selected next node:
+    if ((packet.txNodeType == PACKET_NODE_TYPE_END_DEVICE) &&
+        (packet.rxNodeID == 0U) &&
+        (packet.direction != PACKET_DIRECTION_BROADCAST))
+    {
+      PacketIDFifo_Push(&pendingWorAckNodes, packet.txNodeID);
+
+      if (PacketProcess_StartWorAckToEdTimer(&packet))
+      {
+        APP_LOG(TS_OFF, VLEVEL_M, "Started a timer for WOR-ACK to ED: %u\r\n", packet.txNodeID);
+      }
+      else
+      {
+        PacketIDFifo_Remove(&pendingWorAckNodes, packet.txNodeID);
+        APP_LOG(TS_OFF, VLEVEL_M, "WOR-ACK to ED skipped, no timer available\r\n");
       }
 
       continue;
@@ -332,6 +372,62 @@ static void PacketProcess_StandbyTimerCb(void *context)
   }
 
   PacketProcess_ReconfigureAndSubmit(&packet);
+}
+
+static bool PacketProcess_StartWorAckToEdTimer(const LoRaPacket_t *packet)
+{
+  uint8_t i;
+  uint32_t delayMs;
+
+  if (packet == NULL)
+  {
+    return false;
+  }
+
+  for (i = 0U; i < MAX_PACKET_FIFO_SIZE; i++)
+  {
+    if (UTIL_TIMER_IsRunning(&WorAckToEdTimers[i]) == 0U)
+    {
+      worAckToEdPktBuffer[i] = *packet;
+
+      delayMs = WOR_ACK_TO_ED_TIMER_MIN_MS +
+                ((uint32_t)rand() % (WOR_ACK_TO_ED_TIMER_MAX_MS - WOR_ACK_TO_ED_TIMER_MIN_MS + 1U));
+
+      if (UTIL_TIMER_StartWithPeriod(&WorAckToEdTimers[i], delayMs) == UTIL_TIMER_OK)
+      {
+        return true;
+      }
+
+      return false;
+    }
+  }
+
+  return false;
+}
+
+static void PacketProcess_WorAckToEdTimerCb(void *context)
+{
+  uint8_t timerIndex;
+  LoRaPacket_t packet = {0};
+
+  if (context == NULL)
+  {
+    return;
+  }
+
+  timerIndex = *((uint8_t *)context);
+  if (timerIndex >= MAX_PACKET_FIFO_SIZE)
+  {
+    return;
+  }
+
+  packet = worAckToEdPktBuffer[timerIndex];
+
+  if (PacketIDFifo_Search(&pendingWorAckNodes, packet.txNodeID))
+  {
+    PacketProcess_ReconfigureAndSubmit(&packet);
+    PacketIDFifo_Clear(&pendingWorAckNodes);
+  }
 }
 
 static void PacketProcess_ReconfigureAndSubmit(LoRaPacket_t *packet)

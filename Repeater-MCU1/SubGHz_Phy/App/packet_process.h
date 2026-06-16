@@ -21,6 +21,8 @@ extern "C" {
 
 #define STANDBY_TIMER_MIN_MS 500U
 #define STANDBY_TIMER_MAX_MS 3000U
+#define WOR_ACK_TO_ED_TIMER_MIN_MS 500U
+#define WOR_ACK_TO_ED_TIMER_MAX_MS 3000U
 
 typedef struct
 {
@@ -49,6 +51,7 @@ bool PacketIDFifo_Push(PacketIDFifo_t *fifo, uint16_t packetID);
 bool PacketIDFifo_Pop(PacketIDFifo_t *fifo, uint16_t *packetID);
 bool PacketIDFifo_Search(const PacketIDFifo_t *fifo, uint16_t packetID);
 bool PacketIDFifo_Remove(PacketIDFifo_t *fifo, uint16_t packetID);
+void PacketIDFifo_Clear(PacketIDFifo_t *fifo);
 
 bool PacketFifo_Push(PacketFifo_t *fifo, const LoRaPacket_t *packet);
 bool PacketFifo_Pop(PacketFifo_t *fifo, LoRaPacket_t *packet);
