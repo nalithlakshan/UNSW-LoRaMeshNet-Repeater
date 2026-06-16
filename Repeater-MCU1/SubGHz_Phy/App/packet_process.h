@@ -19,6 +19,9 @@ extern "C" {
 
 #define MAX_PACKET_FIFO_SIZE 20U
 
+#define STANDBY_TIMER_MIN_MS 500U
+#define STANDBY_TIMER_MAX_MS 3000U
+
 typedef struct
 {
   uint16_t packetIDs[MAX_PACKET_FIFO_SIZE];
@@ -40,6 +43,7 @@ extern PacketIDFifo_t lowerDistanceDuplicatePktBuf;
 extern PacketIDFifo_t higherDistanceDuplicatePktBuf;
 extern PacketIDFifo_t pendingWorAckNodes;
 extern PacketFifo_t rxBuffer;
+extern PacketFifo_t standbyBuffer;
 
 bool PacketIDFifo_Push(PacketIDFifo_t *fifo, uint16_t packetID);
 bool PacketIDFifo_Pop(PacketIDFifo_t *fifo, uint16_t *packetID);

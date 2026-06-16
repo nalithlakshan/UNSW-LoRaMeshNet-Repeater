@@ -11,18 +11,26 @@
 #include "transmitter.h"
 
 #include "stm32_seq.h"
+#include "stm32_timer.h"
 #include "utilities_def.h"
 #include "sys_app.h"
 
 #include <stddef.h>
+#include <stdlib.h>
 
 PacketIDFifo_t processedPktBuf = {0};
 PacketIDFifo_t lowerDistanceDuplicatePktBuf = {0};
 PacketIDFifo_t higherDistanceDuplicatePktBuf = {0};
 PacketIDFifo_t pendingWorAckNodes = {0};
 PacketFifo_t rxBuffer = {0};
+PacketFifo_t standbyBuffer = {0};
 
 static void PacketProcess(void);
+static void PacketProcess_StandbyTimerCb(void *context);
+static bool PacketProcess_StartStandbyTimer(void);
+static void PacketProcess_ReconfigureAndSubmit(LoRaPacket_t *packet);
+
+static UTIL_TIMER_Object_t StandbyTimers[MAX_PACKET_FIFO_SIZE];
 
 /*-------------------------------------------------------------------------------------
  * Packet ID FIFO Functions: Push, Pop, Search, Remove, Clear 
@@ -171,7 +179,18 @@ bool PacketFifo_Pop(PacketFifo_t *fifo, LoRaPacket_t *packet)
 //Packet Processing Sequencer Task Initialization
 void PacketProcess_Init(void)
 {
+  uint8_t i;
+
   UTIL_SEQ_RegTask((1U << CFG_SEQ_Task_PacketProcess), 0, PacketProcess);
+
+  for (i = 0U; i < MAX_PACKET_FIFO_SIZE; i++)
+  {
+    UTIL_TIMER_Create(&StandbyTimers[i],
+                      STANDBY_TIMER_MAX_MS,
+                      UTIL_TIMER_ONESHOT,
+                      PacketProcess_StandbyTimerCb,
+                      NULL);
+  }
 }
 
 //Packet Processing Sequencer Task Scheduler
@@ -238,30 +257,109 @@ static void PacketProcess(void)
     // Packet addressed to this repeater OR Broadcast packet:
     if ((packet.rxNodeID == nodeID) || (packet.direction == PACKET_DIRECTION_BROADCAST))
     {
-      packet.txNodeID = nodeID;
-      packet.txNodeType = (nodeType == 'E') ? PACKET_NODE_TYPE_END_DEVICE :
-                          (nodeType == 'R') ? PACKET_NODE_TYPE_REPEATER :
-                                              PACKET_NODE_TYPE_GATEWAY;
-      packet.txDistanceValue = distanceValue;
-      packet.txBatteryPercentage = (uint8_t)batteryPercentage;
-      packet.rxNodeID = (packet.direction == PACKET_DIRECTION_DOWNSTREAM)? nextDownstreamNodeID:
-                        (packet.direction == PACKET_DIRECTION_UPSTREAM)? nextUptreamNodeID: 0U;
-      packet.rxNodeType = ((packet.direction == PACKET_DIRECTION_UPSTREAM) &&
-                           (packet.rxNodeID == nearestGatewayID)) ? PACKET_NODE_TYPE_GATEWAY : PACKET_NODE_TYPE_REPEATER;
-      packet.rxDistanceValue = 0U;
-      packet.nearestGwID = nearestGatewayID;
-
-      if (Transmitter_Submit(&packet))
-      {
-        APP_LOG(TS_OFF, VLEVEL_M, "Submitted packet for retransmission: %s\r\n", Packet_To_String(&packet));
-      }
-      else
-      {
-        APP_LOG(TS_OFF, VLEVEL_M, "Retransmission skipped, transmit buffer full\r\n");
-      }
+      PacketProcess_ReconfigureAndSubmit(&packet);
 
       continue;
     }
 
+    // Standby monitoring candidate from RP/GW:
+    if (((packet.txNodeType == PACKET_NODE_TYPE_REPEATER) ||
+         (packet.txNodeType == PACKET_NODE_TYPE_GATEWAY)) &&
+        (((packet.direction == PACKET_DIRECTION_UPSTREAM) &&
+          (packet.txDistanceValue > distanceValue) &&
+          (distanceValue > packet.rxDistanceValue)) ||
+         ((packet.direction == PACKET_DIRECTION_DOWNSTREAM) &&
+          (packet.txDistanceValue < distanceValue) &&
+          (distanceValue < packet.rxDistanceValue))))
+    {
+      if (PacketProcess_StartStandbyTimer())
+      {
+        PacketFifo_Push(&standbyBuffer, &packet);
+        APP_LOG(TS_OFF, VLEVEL_M, "Submitted packet for standby monitoring: %s\r\n", Packet_To_String(&packet));
+      }
+      else
+      {
+        APP_LOG(TS_OFF, VLEVEL_M, "Standby monitoring skipped, no timer available\r\n");
+      }
+
+      continue;
+    }
+  }
+}
+
+static bool PacketProcess_StartStandbyTimer(void)
+{
+  uint8_t i;
+  uint32_t delayMs;
+
+  for (i = 0U; i < MAX_PACKET_FIFO_SIZE; i++)
+  {
+    if (UTIL_TIMER_IsRunning(&StandbyTimers[i]) == 0U)
+    {
+      delayMs = STANDBY_TIMER_MIN_MS +
+                ((uint32_t)rand() % (STANDBY_TIMER_MAX_MS - STANDBY_TIMER_MIN_MS + 1U));
+      UTIL_TIMER_StartWithPeriod(&StandbyTimers[i], delayMs);
+      return true;
+    }
+  }
+
+  return false;
+}
+
+static void PacketProcess_StandbyTimerCb(void *context)
+{
+  LoRaPacket_t packet = {0};
+
+  (void)context;
+
+  if (!PacketFifo_Pop(&standbyBuffer, &packet))
+  {
+    return;
+  }
+
+  if ((packet.direction == PACKET_DIRECTION_UPSTREAM) &&
+      PacketIDFifo_Search(&lowerDistanceDuplicatePktBuf, packet.packetID))
+  {
+    APP_LOG(TS_OFF, VLEVEL_M, "Standby packet ignored, lower-distance duplicate seen: %u\r\n", packet.packetID);
+    return;
+  }
+
+  if ((packet.direction == PACKET_DIRECTION_DOWNSTREAM) &&
+      PacketIDFifo_Search(&higherDistanceDuplicatePktBuf, packet.packetID))
+  {
+    APP_LOG(TS_OFF, VLEVEL_M, "Standby packet ignored, higher-distance duplicate seen: %u\r\n", packet.packetID);
+    return;
+  }
+
+  PacketProcess_ReconfigureAndSubmit(&packet);
+}
+
+static void PacketProcess_ReconfigureAndSubmit(LoRaPacket_t *packet)
+{
+  if (packet == NULL)
+  {
+    return;
+  }
+
+  packet->txNodeID = nodeID;
+  packet->txNodeType = (nodeType == 'E') ? PACKET_NODE_TYPE_END_DEVICE :
+                       (nodeType == 'R') ? PACKET_NODE_TYPE_REPEATER :
+                                           PACKET_NODE_TYPE_GATEWAY;
+  packet->txDistanceValue = distanceValue;
+  packet->txBatteryPercentage = (uint8_t)batteryPercentage;
+  packet->rxNodeID = (packet->direction == PACKET_DIRECTION_DOWNSTREAM) ? nextDownstreamNodeID :
+                     (packet->direction == PACKET_DIRECTION_UPSTREAM) ? nextUptreamNodeID : 0U;
+  packet->rxNodeType = ((packet->direction == PACKET_DIRECTION_UPSTREAM) &&
+                        (packet->rxNodeID == nearestGatewayID)) ? PACKET_NODE_TYPE_GATEWAY : PACKET_NODE_TYPE_REPEATER;
+  packet->rxDistanceValue = 0U; //Edit this later !!!!!!!!!!
+  packet->nearestGwID = nearestGatewayID;
+
+  if (Transmitter_Submit(packet))
+  {
+    APP_LOG(TS_OFF, VLEVEL_M, "Submitted packet for retransmission: %s\r\n", Packet_To_String(packet));
+  }
+  else
+  {
+    APP_LOG(TS_OFF, VLEVEL_M, "Retransmission skipped, transmit buffer full\r\n");
   }
 }
