@@ -233,6 +233,13 @@ void HAL_I2C_SlaveRxCpltCallback(I2C_HandleTypeDef *hi2c)
       LoRaPacket_t receivedPacket = Packet_Decode(I2CRxBuffer);
       APP_LOG(TS_OFF, VLEVEL_M, "Received I2C packet: %s\r\n", Packet_To_String(&receivedPacket));
 
+      // If waiting to send a WOR-ACK to an ED and another repeater already did that. 
+      if ((receivedPacket.packetType == PACKET_TYPE_WOR) &&(receivedPacket.ackNodeID != 0U) &&
+          PacketIDFifo_Remove(&pendingWorAckNodes, receivedPacket.ackNodeID))
+      {
+        APP_LOG(TS_OFF, VLEVEL_M, "Removed pending WOR ACK node %u\r\n", receivedPacket.ackNodeID);
+      }
+
       // If not a broadcast packet and its nearestGwID doesn't match this repeater's nearestGwID, ignore the packet
       if (receivedPacket.direction != PACKET_DIRECTION_BROADCAST && receivedPacket.nearestGwID != nearestGatewayID)
       {

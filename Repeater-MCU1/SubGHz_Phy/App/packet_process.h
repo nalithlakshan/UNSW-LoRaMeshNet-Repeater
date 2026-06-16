@@ -38,11 +38,13 @@ typedef struct
 extern PacketIDFifo_t processedPktBuf;
 extern PacketIDFifo_t lowerDistanceDuplicatePktBuf;
 extern PacketIDFifo_t higherDistanceDuplicatePktBuf;
+extern PacketIDFifo_t pendingWorAckNodes;
 extern PacketFifo_t rxBuffer;
 
 bool PacketIDFifo_Push(PacketIDFifo_t *fifo, uint16_t packetID);
 bool PacketIDFifo_Pop(PacketIDFifo_t *fifo, uint16_t *packetID);
 bool PacketIDFifo_Search(const PacketIDFifo_t *fifo, uint16_t packetID);
+bool PacketIDFifo_Remove(PacketIDFifo_t *fifo, uint16_t packetID);
 
 bool PacketFifo_Push(PacketFifo_t *fifo, const LoRaPacket_t *packet);
 bool PacketFifo_Pop(PacketFifo_t *fifo, LoRaPacket_t *packet);
