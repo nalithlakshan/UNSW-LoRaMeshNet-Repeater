@@ -15,7 +15,10 @@
 #include "subghz_phy_app.h"
 #include "packet.h"
 #include "transmitter.h"
+#include "packet_process.h"
 #include "sys_app.h"
+
+#include <math.h>
 
 #define MAX_INITIAL_PL_PACKETS 3U
 #define INITIAL_PL_BROADCAST_INTERVAL_MS 10000U
@@ -80,6 +83,7 @@ void PositionLearningInitialBroadcast(void)
   if (initialPktCount < MAX_INITIAL_PL_PACKETS)
   {
     initialPktCount++;
+    sequenceNumber++;
     UTIL_TIMER_Start(&InitialPlTimer);
   }
   else
@@ -91,6 +95,67 @@ void PositionLearningInitialBroadcast(void)
 
 void ReceivedPktHanderPL1(LoRaPacket_t *packet)
 {
+  //Applying Log Distance Path Loss Model to calculate a distance estimate to the rx node using rssi.
+  uint8_t i;
+  uint8_t neighbourID;
+  int16_t rssi;
+  double pl; //path loss
+  double distance; //distance to rx node
+  double d0 = 5.0; //reference distance (40.0)
+  double pl0 = 55; //path loss at d0  (127.41)
+  double gamma = 2.08;
+
+
+  if ((packet == NULL) || (packet->payloadSize < 3U))
+  {
+    return;
+  }
+
+  rssi = (int16_t)(((uint16_t)packet->payload[1] << 8) | packet->payload[2]);
+  pl = (double)TX_OUTPUT_POWER - (double)rssi;
+  distance = pow(10.0, (pl - pl0)/(10.0 * gamma)) * d0;
+  uint32_t distance_x100 = (uint32_t)(distance * 100.0 + 0.5);
+  APP_LOG(TS_OFF, VLEVEL_M, "PL1| RSSI = %d, Distance = %u.%02u m\r\n",rssi, (unsigned int)(distance_x100 / 100U),(unsigned int)(distance_x100 % 100U));
+
+  neighbourID = packet->txNodeID;
+
+  for (i = 0U; i < NeighbourCount; i++)
+  {
+    if (Neighbours[i].ID == neighbourID)
+    {
+      Neighbours[i].Distance = (uint16_t)distance;
+      Neighbours[i].RSSI = rssi;
+      break;
+    }
+  }
+
+  if ((i == NeighbourCount) && (NeighbourCount < MAX_NEIGHBOURS))
+  {
+    Neighbours[NeighbourCount].ID = neighbourID;
+    Neighbours[NeighbourCount].Distance = (uint16_t)distance;
+    Neighbours[NeighbourCount].DistanceValue = 0U; //this is update during position learning phase 3
+    Neighbours[NeighbourCount].RSSI = rssi;
+    NeighbourCount++;
+  }
+
+  packet->payload[1] = 0U;
+  packet->payload[2] = 0U;
+  packet->txNodeID = nodeID;
+  packet->txNodeType = (nodeType == 'E') ? PACKET_NODE_TYPE_END_DEVICE :
+                       (nodeType == 'R') ? PACKET_NODE_TYPE_REPEATER :
+                                           PACKET_NODE_TYPE_GATEWAY;
+
+  if (Transmitter_Submit(packet))
+  {
+    if (DEBUG_PL)
+    {
+      APP_LOG(TS_OFF, VLEVEL_M, "Node %d calculated distance to neighbor= %d, Repeatiing PL1 Packet %s\r\n", nodeID, (uint16_t)distance, Packet_To_String(packet));
+    }
+  }
+  else if (DEBUG_PL)
+  {
+    APP_LOG(TS_OFF, VLEVEL_M, "PL1 repeat skipped, transmit buffer full\r\n");
+  }
 }
 
 void ReceivedPktHanderPL2(LoRaPacket_t *packet)
@@ -113,7 +178,7 @@ static void PositionLearningInitialBroadcastTimerCb(void *context)
   /* Create position learning broadcast packet */
   LoRaPacket_t plPacket = {0};
   plPacket.packetType = PACKET_TYPE_WOR;
-  plPacket.packetID = (uint16_t)(((uint16_t)nodeID << 8) | initialPktCount);
+  plPacket.packetID = (uint16_t)(((uint16_t)nodeID << 8) | sequenceNumber);
   plPacket.direction = PACKET_DIRECTION_BROADCAST;
   plPacket.txNodeID = nodeID;
   plPacket.txNodeType = PACKET_NODE_TYPE_REPEATER;
@@ -127,6 +192,8 @@ static void PositionLearningInitialBroadcastTimerCb(void *context)
   /* Submit the packet for transmission */
   if (Transmitter_Submit(&plPacket))
     {
+      // Add plPacket.packetID to processedPktBuf
+      PacketIDFifo_Push(&processedPktBuf, plPacket.packetID); 
       if (DEBUG_PL)
       {
         const char *packetString = Packet_To_String(&plPacket);

@@ -175,6 +175,7 @@ static void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t LoraS
   /* USER CODE BEGIN OnRxDone */
   LoRaPacket_t receivedPacket;
   const char *packetString;
+  uint16_t encodedSize;
 
   /* Clear BufferRx*/
   memset(RxTextBuf, 0, MAX_APP_BUFFER_SIZE);
@@ -196,6 +197,25 @@ static void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t LoraS
   }
 
   receivedPacket = Packet_Decode(RxTextBuf);
+
+  //Check if it is Position Learning Phase 1 Packet and Update RSSI
+  if ((receivedPacket.positionLearningMode == 1U) &&
+      (receivedPacket.payloadSize >= 3U) &&
+      (receivedPacket.payload[0] == 1U) &&
+      (receivedPacket.packetType == PACKET_TYPE_WOR))
+  {
+    receivedPacket.payload[1] = (uint8_t)(((uint16_t)rssi) >> 8);
+    receivedPacket.payload[2] = (uint8_t)rssi;
+
+    memset(RxTextBuf, 0, MAX_APP_BUFFER_SIZE);
+    encodedSize = Packet_Encode(&receivedPacket, RxTextBuf, MAX_APP_BUFFER_SIZE);
+    if (encodedSize == 0U)
+    {
+      APP_LOG(TS_OFF, VLEVEL_M, "Failed to encode PL1 packet with RSSI\r\n");
+      return;
+    }
+  }
+
   packetString = Packet_To_String(&receivedPacket);
   APP_LOG(TS_OFF, VLEVEL_M, "RX done, size=%u, RSSI=%d, SNR=%d, %s\r\n",
           size, rssi, LoraSnr_FskCfo, packetString);
