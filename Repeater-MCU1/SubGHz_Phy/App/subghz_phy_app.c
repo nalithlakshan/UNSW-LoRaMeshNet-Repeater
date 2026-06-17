@@ -36,7 +36,7 @@
 /* USER CODE BEGIN EV */
 
 // Device Info
-uint8_t nodeID = 2;
+uint8_t nodeID = 3;
 char nodeType = 'R';  // 'R' for Repeater, 'E' for End Device, 'G' for Gateway
 double batteryPercentage = 100.0;
 uint16_t distanceValue = 0; // Distance value to nearest gateway, to be updated by routing init
@@ -234,6 +234,13 @@ void HAL_I2C_SlaveRxCpltCallback(I2C_HandleTypeDef *hi2c)
       LoRaPacket_t receivedPacket = Packet_Decode(I2CRxBuffer);
       APP_LOG(TS_OFF, VLEVEL_M, "Received I2C packet: %s\r\n", Packet_To_String(&receivedPacket));
 
+      // Ignore packets sent by this repeater's own trasnmitter
+      if (receivedPacket.txNodeID == nodeID){
+        APP_LOG(TS_OFF, VLEVEL_M, "It is from own Tx. Therefore, Igored!\r\n")
+        HAL_I2C_Slave_Receive_IT(&hi2c2, I2CRxBuffer, MAX_APP_BUFFER_SIZE);
+        return;
+      }
+
       // If waiting to send a WOR-ACK to an ED and another repeater already did that. 
       if ((receivedPacket.packetType == PACKET_TYPE_WOR) &&(receivedPacket.ackNodeID != 0U) &&
           PacketIDFifo_Remove(&pendingWorAckNodes, receivedPacket.ackNodeID))
@@ -264,10 +271,12 @@ void HAL_I2C_SlaveRxCpltCallback(I2C_HandleTypeDef *hi2c)
       else if((distanceValue >= receivedPacket.txDistanceValue) && !PacketIDFifo_Search(&lowerDistanceDuplicatePktBuf, receivedPacket.packetID))
       {
           PacketIDFifo_Push(&lowerDistanceDuplicatePktBuf, receivedPacket.packetID);
+          APP_LOG(TS_OFF, VLEVEL_M, "Lower distance duplicate packet received \r\n");
       }
       else if((distanceValue < receivedPacket.txDistanceValue) && !PacketIDFifo_Search(&higherDistanceDuplicatePktBuf, receivedPacket.packetID))
       {
           PacketIDFifo_Push(&higherDistanceDuplicatePktBuf, receivedPacket.packetID);
+          APP_LOG(TS_OFF, VLEVEL_M, "Higher distance duplicate packet received \r\n");
       }
 
       HAL_I2C_Slave_Receive_IT(&hi2c2, I2CRxBuffer, MAX_APP_BUFFER_SIZE);
@@ -401,7 +410,7 @@ static void PushBtnTask(void)
 
 static void WakeIntMcu4Task(void)
 {
-  APP_LOG(TS_OFF, VLEVEL_M, "MCU4 Wake Int Pin Toggled\r\n");
+  APP_LOG(TS_OFF, VLEVEL_M, "\nMCU4 Wake Int Pin Toggled\r\n");
   HAL_I2C_Slave_Receive_IT(&hi2c2, I2CRxBuffer, MAX_APP_BUFFER_SIZE);
 }
 /* USER CODE END PrFD */

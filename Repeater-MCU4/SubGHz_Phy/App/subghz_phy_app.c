@@ -239,7 +239,7 @@ static void OnTxTimeout(void)
 static void OnRxTimeout(void)
 {
   /* USER CODE BEGIN OnRxTimeout */
-  APP_LOG(TS_OFF, VLEVEL_M, "RX timeout\r\n");
+  APP_LOG(TS_OFF, VLEVEL_M, "RX timeout, radio status=%d\r\n", Radio.GetStatus());
   Radio.Sleep();
   /* USER CODE END OnRxTimeout */
 }

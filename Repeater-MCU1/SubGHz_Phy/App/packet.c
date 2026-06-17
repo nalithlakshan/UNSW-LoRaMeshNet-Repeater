@@ -161,7 +161,7 @@ const char *Packet_To_String(const LoRaPacket_t *packet)
 
   uint8_t sequenceNumber = (uint8_t)packet->packetID;
   uint8_t originNodeID = (uint8_t)(packet->packetID >> 8);
-  const char *packetTypeString = (packet->packetType == PACKET_TYPE_WOR) ? "WOR " : "DATA";
+  const char *packetTypeString = (packet->packetType == PACKET_TYPE_WOR) ? "WOR" : "DATA";
   char packetDirection = (packet->direction == PACKET_DIRECTION_UPSTREAM) ? 'U' : (packet->direction == PACKET_DIRECTION_DOWNSTREAM) ? 'D' : 'B';
   char txNodeTypeChar = (packet->txNodeType == PACKET_NODE_TYPE_END_DEVICE) ? 'E' : (packet->txNodeType == PACKET_NODE_TYPE_REPEATER) ? 'R' : 'G';
   char rxNodeTypeChar = (packet->rxNodeType == PACKET_NODE_TYPE_END_DEVICE) ? 'E' : (packet->rxNodeType == PACKET_NODE_TYPE_REPEATER) ? 'R' : 'G';

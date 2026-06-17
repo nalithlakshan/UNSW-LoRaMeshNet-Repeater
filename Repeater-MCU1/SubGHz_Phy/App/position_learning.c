@@ -149,7 +149,7 @@ void ReceivedPktHanderPL1(LoRaPacket_t *packet)
   {
     if (DEBUG_PL)
     {
-      APP_LOG(TS_OFF, VLEVEL_M, "Node %d calculated distance to neighbor= %d, Repeatiing PL1 Packet %s\r\n", nodeID, (uint16_t)distance, Packet_To_String(packet));
+      APP_LOG(TS_OFF, VLEVEL_M, "Repeatiing PL1 Packet %s\r\n", Packet_To_String(packet));
     }
   }
   else if (DEBUG_PL)
