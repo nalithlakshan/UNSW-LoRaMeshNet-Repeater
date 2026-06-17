@@ -13,6 +13,9 @@ extern "C" {
 #endif
 
 #include "packet.h"
+#include "packet_process.h"
+
+extern PacketIDFifo_t repeatedPl1PktIDs;
 
 void PositionLearningInit(void);
 void PositionLearningInitialBroadcast(void);

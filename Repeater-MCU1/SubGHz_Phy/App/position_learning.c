@@ -24,6 +24,8 @@
 #define INITIAL_PL_BROADCAST_INTERVAL_MS 10000U
 #define DEBUG_PL 1
 
+PacketIDFifo_t repeatedPl1PktIDs = {0};
+
 /**
   ******************************************************************************************************
   * When positionLearningMode = 1, the packet's payload can take following formats depending on the
@@ -138,6 +140,11 @@ void ReceivedPktHanderPL1(LoRaPacket_t *packet)
     NeighbourCount++;
   }
 
+  if (PacketIDFifo_Search(&repeatedPl1PktIDs, packet->packetID))
+  {
+    return;
+  }
+
   packet->payload[1] = 0U;
   packet->payload[2] = 0U;
   packet->txNodeID = nodeID;
@@ -147,6 +154,8 @@ void ReceivedPktHanderPL1(LoRaPacket_t *packet)
 
   if (Transmitter_Submit(packet))
   {
+    PacketIDFifo_Push(&repeatedPl1PktIDs, packet->packetID);
+
     if (DEBUG_PL)
     {
       APP_LOG(TS_OFF, VLEVEL_M, "Repeatiing PL1 Packet %s\r\n", Packet_To_String(packet));

@@ -268,15 +268,29 @@ void HAL_I2C_SlaveRxCpltCallback(I2C_HandleTypeDef *hi2c)
         PacketProcess_Schedule();
         APP_LOG(TS_OFF, VLEVEL_M, "New packet received, added to processed buffer\r\n");
       }
-      else if((distanceValue >= receivedPacket.txDistanceValue) && !PacketIDFifo_Search(&lowerDistanceDuplicatePktBuf, receivedPacket.packetID))
-      {
+      else
+      { 
+        //Exception for Position Learning Phase 1 Packets 
+        if ((receivedPacket.positionLearningMode == 1U) && (receivedPacket.payloadSize > 0U) && 
+            (receivedPacket.payload[0] == 1U))
+        {
+          PacketFifo_Push(&rxBuffer, &receivedPacket);
+          PacketProcess_Schedule();
+          APP_LOG(TS_OFF, VLEVEL_M, "Duplicate PL1 packet submitted for processing\r\n");
+        }
+
+        if ((distanceValue >= receivedPacket.txDistanceValue) &&
+            !PacketIDFifo_Search(&lowerDistanceDuplicatePktBuf, receivedPacket.packetID))
+        {
           PacketIDFifo_Push(&lowerDistanceDuplicatePktBuf, receivedPacket.packetID);
           APP_LOG(TS_OFF, VLEVEL_M, "Lower distance duplicate packet received \r\n");
-      }
-      else if((distanceValue < receivedPacket.txDistanceValue) && !PacketIDFifo_Search(&higherDistanceDuplicatePktBuf, receivedPacket.packetID))
-      {
+        }
+        else if ((distanceValue < receivedPacket.txDistanceValue) &&
+                 !PacketIDFifo_Search(&higherDistanceDuplicatePktBuf, receivedPacket.packetID))
+        {
           PacketIDFifo_Push(&higherDistanceDuplicatePktBuf, receivedPacket.packetID);
           APP_LOG(TS_OFF, VLEVEL_M, "Higher distance duplicate packet received \r\n");
+        }
       }
 
       HAL_I2C_Slave_Receive_IT(&hi2c2, I2CRxBuffer, MAX_APP_BUFFER_SIZE);
