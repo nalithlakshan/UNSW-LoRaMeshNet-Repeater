@@ -28,6 +28,7 @@ extern "C" {
 typedef struct NeighbourInfo_s  // To hold any neighbouring node's info
 {
   uint8_t ID;
+  uint8_t Type;
   uint16_t Distance;
   uint16_t DistanceValue;
   int16_t RSSI;

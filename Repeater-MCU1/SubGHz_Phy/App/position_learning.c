@@ -22,6 +22,7 @@
 
 #define MAX_INITIAL_PL_PACKETS 3U
 #define INITIAL_PL_BROADCAST_INTERVAL_MS 10000U
+#define PL2_START_TIMEOUT_MS 30000U
 #define DEBUG_PL 1
 
 PacketIDFifo_t repeatedPl1PktIDs = {0};
@@ -68,8 +69,10 @@ PacketIDFifo_t repeatedPl1PktIDs = {0};
 static uint8_t initialPktCount = 0;
 
 static UTIL_TIMER_Object_t InitialPlTimer;
+static UTIL_TIMER_Object_t PL2StartTimer;
 
 static void PositionLearningInitialBroadcastTimerCb(void *context);
+static void PL2StartTimerCb(void *context);
 
 void PositionLearningInit(void)
 {
@@ -77,6 +80,12 @@ void PositionLearningInit(void)
                     INITIAL_PL_BROADCAST_INTERVAL_MS,
                     UTIL_TIMER_ONESHOT,
                     PositionLearningInitialBroadcastTimerCb,
+                    NULL);
+
+  UTIL_TIMER_Create(&PL2StartTimer,
+                    PL2_START_TIMEOUT_MS,
+                    UTIL_TIMER_ONESHOT,
+                    PL2StartTimerCb,
                     NULL);
 }
 
@@ -134,14 +143,18 @@ void ReceivedPktHanderPL1(LoRaPacket_t *packet)
   if ((i == NeighbourCount) && (NeighbourCount < MAX_NEIGHBOURS))
   {
     Neighbours[NeighbourCount].ID = neighbourID;
+    Neighbours[NeighbourCount].Type = packet->txNodeType;
     Neighbours[NeighbourCount].Distance = (uint16_t)distance;
     Neighbours[NeighbourCount].DistanceValue = 0U; //this is update during position learning phase 3
     Neighbours[NeighbourCount].RSSI = rssi;
     NeighbourCount++;
   }
 
+  UTIL_TIMER_StartWithPeriod(&PL2StartTimer, PL2_START_TIMEOUT_MS);
+
   if (PacketIDFifo_Search(&repeatedPl1PktIDs, packet->packetID))
   {
+    APP_LOG(TS_OFF, VLEVEL_M, "A previously repeated PL1 packet. Skipped!\r\n");
     return;
   }
 
@@ -169,6 +182,62 @@ void ReceivedPktHanderPL1(LoRaPacket_t *packet)
 
 void ReceivedPktHanderPL2(LoRaPacket_t *packet)
 {
+  (void)packet;
+}
+
+void PL2InitialTransmission(void)
+{
+  LoRaPacket_t plPacket = {0};
+  uint8_t maxNeighbourCount;
+  uint8_t pl2NeighbourCount;
+  uint16_t payloadIndex;
+  uint8_t i;
+
+  APP_LOG(TS_OFF, VLEVEL_M, "\nPL2 Started!\r\n");
+
+  maxNeighbourCount = (uint8_t)((LORA_PACKET_MAX_PAYLOAD_SIZE - 4)/4);
+  pl2NeighbourCount = (NeighbourCount > maxNeighbourCount) ? maxNeighbourCount : NeighbourCount;
+
+  sequenceNumber++;
+
+  plPacket.packetType = PACKET_TYPE_WOR;
+  plPacket.packetID = (uint16_t)(((uint16_t)nodeID << 8) | sequenceNumber);
+  plPacket.direction = PACKET_DIRECTION_BROADCAST;
+  plPacket.txNodeID = nodeID;
+  plPacket.txNodeType = (nodeType == 'E') ? PACKET_NODE_TYPE_END_DEVICE :
+                       (nodeType == 'R') ? PACKET_NODE_TYPE_REPEATER :
+                                           PACKET_NODE_TYPE_GATEWAY;
+  plPacket.positionLearningMode = 1U;
+  plPacket.preambleSize = LORA_PREAMBLE_LENGTH;
+  plPacket.payloadSize = (uint16_t)(4 + ((uint16_t)pl2NeighbourCount * 4));
+
+  plPacket.payload[0] = 2U;
+  plPacket.payload[1] = nodeID;
+  plPacket.payload[2] = plPacket.txNodeType;
+  plPacket.payload[3] = pl2NeighbourCount;
+
+  payloadIndex = 4;
+  for (i = 0U; i < pl2NeighbourCount; i++)
+  {
+    plPacket.payload[payloadIndex++] = Neighbours[i].ID;
+    plPacket.payload[payloadIndex++] = Neighbours[i].Type;
+    plPacket.payload[payloadIndex++] = (uint8_t)(Neighbours[i].Distance >> 8);
+    plPacket.payload[payloadIndex++] = (uint8_t)Neighbours[i].Distance;
+  }
+
+  if (Transmitter_Submit(&plPacket))
+  {
+    PacketIDFifo_Push(&processedPktBuf, plPacket.packetID);
+
+    if (DEBUG_PL)
+    {
+      APP_LOG(TS_OFF, VLEVEL_M, "Submitted PL2 Packet %s\r\n", Packet_To_String(&plPacket));
+    }
+  }
+  else if (DEBUG_PL)
+  {
+    APP_LOG(TS_OFF, VLEVEL_M, "PL2 TX skipped, transmit buffer full\r\n");
+  }
 }
 
 void ReceivedPktHanderPL3(LoRaPacket_t *packet)
@@ -180,8 +249,8 @@ static void PositionLearningInitialBroadcastTimerCb(void *context)
   (void)context;
 
   if(DEBUG_PL){
-    APP_LOG(TS_OFF, VLEVEL_M, "RP %u initiating position learning broadcast packet: %u\r\n", nodeID, initialPktCount);
-    MQTT_LOG(TS_OFF, VLEVEL_M, "RP %u initiating position learning broadcast packet: %u\r\n", nodeID, initialPktCount);
+    APP_LOG(TS_OFF, VLEVEL_M, "\nRP %u initiating position learning broadcast packet: %u\r\n", nodeID, initialPktCount);
+    MQTT_LOG(TS_OFF, VLEVEL_M, "\nRP %u initiating position learning broadcast packet: %u\r\n", nodeID, initialPktCount);
   }
 
   /* Create position learning broadcast packet */
@@ -202,7 +271,8 @@ static void PositionLearningInitialBroadcastTimerCb(void *context)
   if (Transmitter_Submit(&plPacket))
     {
       // Add plPacket.packetID to processedPktBuf
-      PacketIDFifo_Push(&processedPktBuf, plPacket.packetID); 
+      PacketIDFifo_Push(&processedPktBuf, plPacket.packetID);
+      PacketIDFifo_Push(&repeatedPl1PktIDs, plPacket.packetID); 
       if (DEBUG_PL)
       {
         const char *packetString = Packet_To_String(&plPacket);
@@ -215,4 +285,11 @@ static void PositionLearningInitialBroadcastTimerCb(void *context)
     }
 
   PositionLearningInitialBroadcast();
+}
+
+static void PL2StartTimerCb(void *context)
+{
+  (void)context;
+
+  PL2InitialTransmission();
 }
