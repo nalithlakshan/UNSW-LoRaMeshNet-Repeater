@@ -83,6 +83,7 @@ typedef enum
   CFG_SEQ_Task_BTN,
   CFG_SEQ_Task_WakeIntMcu4,
   CFG_SEQ_Task_PacketProcess,
+  CFG_SEQ_Task_PL3RouteMapping,
 
   /* USER CODE END CFG_SEQ_Task_Id_t */
   CFG_SEQ_Task_NBR

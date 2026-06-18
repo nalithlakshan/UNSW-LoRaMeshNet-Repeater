@@ -30,7 +30,6 @@ static void PacketProcess_StandbyTimerCb(void *context);
 static bool PacketProcess_StartStandbyTimer(void);
 static void PacketProcess_WorAckToEdTimerCb(void *context);
 static bool PacketProcess_StartWorAckToEdTimer(const LoRaPacket_t *packet);
-static void PacketProcess_ReconfigureAndSubmit(LoRaPacket_t *packet);
 
 static UTIL_TIMER_Object_t StandbyTimers[MAX_PACKET_FIFO_SIZE];
 static UTIL_TIMER_Object_t WorAckToEdTimers[MAX_PACKET_FIFO_SIZE];
@@ -430,7 +429,7 @@ static void PacketProcess_WorAckToEdTimerCb(void *context)
   }
 }
 
-static void PacketProcess_ReconfigureAndSubmit(LoRaPacket_t *packet)
+void PacketProcess_ReconfigureAndSubmit(LoRaPacket_t *packet)
 {
   if (packet == NULL)
   {
@@ -445,7 +444,7 @@ static void PacketProcess_ReconfigureAndSubmit(LoRaPacket_t *packet)
   packet->txBatteryPercentage = (uint8_t)batteryPercentage;
   packet->rxNodeID = (packet->direction == PACKET_DIRECTION_DOWNSTREAM) ? nextDownstreamNodeID :
                      (packet->direction == PACKET_DIRECTION_UPSTREAM) ? nextUptreamNodeID : 0U;
-  packet->rxNodeType = ((packet->direction == PACKET_DIRECTION_UPSTREAM) &&
+  packet->rxNodeType = ((packet->direction == PACKET_DIRECTION_UPSTREAM) && (packet->rxNodeID != 0) &&
                         (packet->rxNodeID == nearestGatewayID)) ? PACKET_NODE_TYPE_GATEWAY : PACKET_NODE_TYPE_REPEATER;
   packet->rxDistanceValue = 0U; //Edit this later !!!!!!!!!!
   packet->nearestGwID = nearestGatewayID;

@@ -16,13 +16,16 @@
 #include "packet.h"
 #include "transmitter.h"
 #include "packet_process.h"
+#include "stm32_seq.h"
 #include "sys_app.h"
+#include "utilities_def.h"
 
 #include <math.h>
 
 #define MAX_INITIAL_PL_PACKETS 3U
 #define INITIAL_PL_BROADCAST_INTERVAL_MS 10000U
 #define PL2_START_TIMEOUT_MS 30000U
+#define PL3_START_TIMEOUT_MS 30000U
 #define DEBUG_PL 1
 
 PacketIDFifo_t repeatedPl1PktIDs = {0};
@@ -70,9 +73,11 @@ static uint8_t initialPktCount = 0;
 
 static UTIL_TIMER_Object_t InitialPlTimer;
 static UTIL_TIMER_Object_t PL2StartTimer;
+static UTIL_TIMER_Object_t PL3StartTimer;
 
 static void PositionLearningInitialBroadcastTimerCb(void *context);
 static void PL2StartTimerCb(void *context);
+static void PL3StartTimerCb(void *context);
 
 void PositionLearningInit(void)
 {
@@ -87,6 +92,14 @@ void PositionLearningInit(void)
                     UTIL_TIMER_ONESHOT,
                     PL2StartTimerCb,
                     NULL);
+
+  UTIL_TIMER_Create(&PL3StartTimer,
+                    PL3_START_TIMEOUT_MS,
+                    UTIL_TIMER_ONESHOT,
+                    PL3StartTimerCb,
+                    NULL);
+
+  UTIL_SEQ_RegTask((1U << CFG_SEQ_Task_PL3RouteMapping), 0, PL3RouteMapping);
 }
 
 void PositionLearningInitialBroadcast(void)
@@ -182,7 +195,9 @@ void ReceivedPktHanderPL1(LoRaPacket_t *packet)
 
 void ReceivedPktHanderPL2(LoRaPacket_t *packet)
 {
-  (void)packet;
+  UTIL_TIMER_StartWithPeriod(&PL3StartTimer, PL3_START_TIMEOUT_MS);
+
+  PacketProcess_ReconfigureAndSubmit(packet);
 }
 
 void PL2InitialTransmission(void)
@@ -244,6 +259,10 @@ void ReceivedPktHanderPL3(LoRaPacket_t *packet)
 {
 }
 
+void PL3RouteMapping(void)
+{
+}
+
 static void PositionLearningInitialBroadcastTimerCb(void *context)
 {
   (void)context;
@@ -292,4 +311,11 @@ static void PL2StartTimerCb(void *context)
   (void)context;
 
   PL2InitialTransmission();
+}
+
+static void PL3StartTimerCb(void *context)
+{
+  (void)context;
+
+  UTIL_SEQ_SetTask((1U << CFG_SEQ_Task_PL3RouteMapping), CFG_SEQ_Prio_0);
 }

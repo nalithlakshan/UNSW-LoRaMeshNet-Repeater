@@ -20,6 +20,7 @@ extern PacketIDFifo_t repeatedPl1PktIDs;
 void PositionLearningInit(void);
 void PositionLearningInitialBroadcast(void);
 void PL2InitialTransmission(void);
+void PL3RouteMapping(void);
 void ReceivedPktHanderPL1(LoRaPacket_t *packet);
 void ReceivedPktHanderPL2(LoRaPacket_t *packet);
 void ReceivedPktHanderPL3(LoRaPacket_t *packet);
