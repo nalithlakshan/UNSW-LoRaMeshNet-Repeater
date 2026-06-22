@@ -8,7 +8,7 @@ const char* password = "dimobatta1";
 const char* mqttServer = "7a95f954fa024e02b2abee411a96e857.s1.eu.hivemq.cloud";
 const int mqttPort = 8883;
 
-// const char* mqttUser = "nalithlakshan";
+const char* mqttUser = "nalithlakshan";
 const char* mqttPass = "Nalith96";
 
 const char* publishTopic = "BBB";

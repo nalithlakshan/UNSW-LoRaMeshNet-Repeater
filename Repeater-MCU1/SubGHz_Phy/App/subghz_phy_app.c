@@ -36,7 +36,7 @@
 /* USER CODE BEGIN EV */
 
 // Device Info
-uint8_t nodeID = 3;
+uint8_t nodeID = 4;
 char nodeType = 'R';  // 'R' for Repeater, 'E' for End Device, 'G' for Gateway
 double batteryPercentage = 100.0;
 uint16_t distanceValue = 0; // Distance value to nearest gateway, to be updated by routing init
@@ -52,9 +52,9 @@ volatile bool inStandbyMode = false;
 // Routing Info
 NeighbourInfo_t Neighbours[MAX_NEIGHBOURS] = {0};
 uint8_t NeighbourCount = 0;
-uint8_t nextUptreamNodeID = 3;
-uint8_t nextDownstreamNodeID = 5;
-uint8_t nearestGatewayID = 1;
+uint8_t nextUptreamNodeID = 0;
+uint8_t nextDownstreamNodeID = 0;
+uint8_t nearestGatewayID = 0;
 char direction = 'U';  // 'U' for upstream, 'D' for downstream, 'B' for broadcast
 
 /* USER CODE END EV */

@@ -19,16 +19,19 @@
 #include "stm32_seq.h"
 #include "sys_app.h"
 #include "utilities_def.h"
+#include "main.h"
 
 #include <math.h>
 
-#define MAX_INITIAL_PL_PACKETS 3U
+#define MAX_INITIAL_PL_PACKETS 1U
 #define INITIAL_PL_BROADCAST_INTERVAL_MS 10000U
-#define PL2_START_TIMEOUT_MS 30000U
-#define PL3_START_TIMEOUT_MS 30000U
+#define PL2_START_TIMEOUT_MS 35000U
+#define PL3_START_TIMEOUT_MS 35000U
+#define NETWORK_GRAPH_DISTANCE_INF 0xFFFFFFFFUL
 #define DEBUG_PL 1
 
 PacketIDFifo_t repeatedPl1PktIDs = {0};
+NetworkGraph_t NetworkGraph = {0};
 
 /**
   ******************************************************************************************************
@@ -54,18 +57,8 @@ PacketIDFifo_t repeatedPl1PktIDs = {0};
   * | 2   | neighborDistance    | distance to the neighbor from the considered device (in meters)
   * 
   * {Phase 3 - Routing Table Dissemination Phase}
-  * |Bytes| Field               | Value/Description
-  * |-----|---------------------|----------------------------------------------------------------------
-  * | 1   | phase               | value = 3 to indicate routing table dissemination phase
-  * | 1   | numberOfRepeaters   | number of repeaters
-  * Then for each repeater:
-  * | 1   | repeaterID          | nodeID of the repeater
-  * | 1   | nearestGw           | nodeID of the nearest gateway to the repeater
-  * | 2   | distanceValue       | distance value of the repeater to the nearest gateway
-  * | 1   | uptreamNodeID       | nodeID of the next upstream node for this repeater
-  * | 1   | downstreamNodeID1   | nodeID of the next downstream node 1 (0 if not applicable)
-  * | 1   | downstreamNodeID2   | nodeID of the next downstream node 2 (0 if not applicable)
-  * | 1   | downstreamNodeID3   | nodeID of the next downstream node 3 (0 if not applicable)
+  * This process is executed after PL2 to build a routing table in-house. No LoRa transmission 
+  * happens in this phase.
   ******************************************************************************************************
   */
 
@@ -78,6 +71,14 @@ static UTIL_TIMER_Object_t PL3StartTimer;
 static void PositionLearningInitialBroadcastTimerCb(void *context);
 static void PL2StartTimerCb(void *context);
 static void PL3StartTimerCb(void *context);
+static bool NetworkGraph_IsRoutingNode(uint8_t nodeType);
+static int8_t NetworkGraph_FindNodeIndex(uint8_t nodeID);
+static int8_t NetworkGraph_AddOrUpdateNode(uint8_t nodeID, uint8_t nodeType, uint16_t nodeDistanceValue, bool updateDistanceValue);
+static void NetworkGraph_SetDirectedLink(uint8_t fromIndex, uint8_t toIndex, uint16_t distance);
+static void NetworkGraph_AddLocalNeighbours(void);
+static void NetworkGraph_AddPL2Packet(const LoRaPacket_t *packet);
+static void NetworkGraph_CalculateShortestPaths(uint8_t sourceIndex, uint32_t distances[NETWORK_GRAPH_MAX_NODES]);
+static void NetworkGraph_UpdateLocalRoutingInfo(void);
 
 void PositionLearningInit(void)
 {
@@ -104,6 +105,8 @@ void PositionLearningInit(void)
 
 void PositionLearningInitialBroadcast(void)
 {
+  HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_SET); //To indicate PL running
+
   if (initialPktCount < MAX_INITIAL_PL_PACKETS)
   {
     initialPktCount++;
@@ -129,6 +132,7 @@ void ReceivedPktHanderPL1(LoRaPacket_t *packet)
   double pl0 = 55; //path loss at d0  (127.41)
   double gamma = 2.08;
 
+  HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_SET); //To indicate PL running
 
   if ((packet == NULL) || (packet->payloadSize < 3U))
   {
@@ -185,6 +189,8 @@ void ReceivedPktHanderPL1(LoRaPacket_t *packet)
     if (DEBUG_PL)
     {
       APP_LOG(TS_OFF, VLEVEL_M, "Repeatiing PL1 Packet %s\r\n", Packet_To_String(packet));
+      MQTT_LOG(TS_OFF, VLEVEL_M, "PL1| Node %u retransmitting packet %u/%u\r\n", nodeID, 
+        (uint8_t)(packet->packetID >> 8), (uint8_t)packet->packetID);
     }
   }
   else if (DEBUG_PL)
@@ -197,7 +203,14 @@ void ReceivedPktHanderPL2(LoRaPacket_t *packet)
 {
   UTIL_TIMER_StartWithPeriod(&PL3StartTimer, PL3_START_TIMEOUT_MS);
 
+  NetworkGraph_AddPL2Packet(packet);
+
   PacketProcess_ReconfigureAndSubmit(packet);
+
+  if(DEBUG_PL){
+    MQTT_LOG(TS_OFF, VLEVEL_M, "PL2| Node %u retransmitting packet %u/%u\r\n", nodeID, 
+      (uint8_t)(packet->packetID >> 8), (uint8_t)packet->packetID);
+  }
 }
 
 void PL2InitialTransmission(void)
@@ -231,6 +244,8 @@ void PL2InitialTransmission(void)
   plPacket.payload[2] = plPacket.txNodeType;
   plPacket.payload[3] = pl2NeighbourCount;
 
+  NetworkGraph_AddLocalNeighbours();
+
   payloadIndex = 4;
   for (i = 0U; i < pl2NeighbourCount; i++)
   {
@@ -247,6 +262,8 @@ void PL2InitialTransmission(void)
     if (DEBUG_PL)
     {
       APP_LOG(TS_OFF, VLEVEL_M, "Submitted PL2 Packet %s\r\n", Packet_To_String(&plPacket));
+      MQTT_LOG(TS_OFF, VLEVEL_M, "PL2| Node %u sent packet %u/%u with neighbour table, neighbour count=%u\r\n", 
+        nodeID, nodeID, sequenceNumber, pl2NeighbourCount);
     }
   }
   else if (DEBUG_PL)
@@ -255,12 +272,97 @@ void PL2InitialTransmission(void)
   }
 }
 
-void ReceivedPktHanderPL3(LoRaPacket_t *packet)
-{
-}
-
 void PL3RouteMapping(void)
 {
+  uint8_t repeaterIndex;
+  uint8_t gatewayIndex;
+  uint8_t bestGatewayID;
+  uint32_t distances[NETWORK_GRAPH_MAX_NODES];
+  uint32_t bestDistance;
+  bool gatewayFound;
+
+/* For each repeater in the graph, run Dijkstra from that repeater, find the nearest reachable gateway,
+ * and update that repeater's graph record. 
+ * Also, if this device is a repeater, update the global variables: distanceValue, nearestGatewayID */
+  for (repeaterIndex = 0U; repeaterIndex < NetworkGraph.nodeCount; repeaterIndex++)
+  {
+    if ((!NetworkGraph.nodes[repeaterIndex].isValid) ||
+        (NetworkGraph.nodes[repeaterIndex].nodeType != PACKET_NODE_TYPE_REPEATER))
+    {
+      continue;
+    }
+
+    NetworkGraph_CalculateShortestPaths(repeaterIndex, distances);
+
+    bestGatewayID = 0U;
+    bestDistance = NETWORK_GRAPH_DISTANCE_INF;
+    gatewayFound = false;
+
+    for (gatewayIndex = 0U; gatewayIndex < NetworkGraph.nodeCount; gatewayIndex++)
+    {
+      if ((!NetworkGraph.nodes[gatewayIndex].isValid) ||
+          (NetworkGraph.nodes[gatewayIndex].nodeType != PACKET_NODE_TYPE_GATEWAY))
+      {
+        continue;
+      }
+
+      if (distances[gatewayIndex] < bestDistance)
+      {
+        bestDistance = distances[gatewayIndex];
+        bestGatewayID = NetworkGraph.nodes[gatewayIndex].nodeID;
+        gatewayFound = true;
+      }
+    }
+
+    if (gatewayFound)
+    {
+      NetworkGraph.nodes[repeaterIndex].nearestGatewayID = bestGatewayID;
+      NetworkGraph.nodes[repeaterIndex].hasRouteToGateway = true;
+      NetworkGraph.nodes[repeaterIndex].distanceValue = (bestDistance > 0xFFFFU) ? 0xFFFFU : (uint16_t)bestDistance;
+
+      //If the considered repeater is this device itself
+      if (NetworkGraph.nodes[repeaterIndex].nodeID == nodeID)
+      {
+        nearestGatewayID = bestGatewayID;
+        distanceValue = NetworkGraph.nodes[repeaterIndex].distanceValue;
+      }
+
+      if (DEBUG_PL)
+      {
+        APP_LOG(TS_OFF, VLEVEL_M, "PL3| RP %u nearest GW %u, DistanceValue %u\r\n",
+                NetworkGraph.nodes[repeaterIndex].nodeID,
+                NetworkGraph.nodes[repeaterIndex].nearestGatewayID,
+                NetworkGraph.nodes[repeaterIndex].distanceValue);
+      }
+    }
+    else if (DEBUG_PL)
+    {
+      NetworkGraph.nodes[repeaterIndex].hasRouteToGateway = false;
+
+      APP_LOG(TS_OFF, VLEVEL_M, "PL3| RP %u has no reachable gateway\r\n",
+              NetworkGraph.nodes[repeaterIndex].nodeID);
+    }
+  }
+
+
+  NetworkGraph_UpdateLocalRoutingInfo();
+
+  HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_RESET);
+
+  if (DEBUG_PL)
+  {
+    MQTT_LOG(TS_OFF, VLEVEL_M,
+         "PL_DONE| Node %u GW=%u DV=%u UP=%u DOWN=%u graphNodes=%u\r\n",
+         nodeID, nearestGatewayID, distanceValue,
+         nextUptreamNodeID, nextDownstreamNodeID,
+         NetworkGraph.nodeCount);
+
+    APP_LOG(TS_OFF, VLEVEL_M,
+         "PL_DONE| Node %u GW=%u DV=%u UP=%u DOWN=%u graphNodes=%u\r\n",
+         nodeID, nearestGatewayID, distanceValue,
+         nextUptreamNodeID, nextDownstreamNodeID,
+         NetworkGraph.nodeCount);
+  }
 }
 
 static void PositionLearningInitialBroadcastTimerCb(void *context)
@@ -268,8 +370,8 @@ static void PositionLearningInitialBroadcastTimerCb(void *context)
   (void)context;
 
   if(DEBUG_PL){
-    APP_LOG(TS_OFF, VLEVEL_M, "\nRP %u initiating position learning broadcast packet: %u\r\n", nodeID, initialPktCount);
-    MQTT_LOG(TS_OFF, VLEVEL_M, "\nRP %u initiating position learning broadcast packet: %u\r\n", nodeID, initialPktCount);
+    APP_LOG(TS_OFF, VLEVEL_M, "\nNode %u initiating position learning broadcast packet: %u\r\n", nodeID, initialPktCount);
+    MQTT_LOG(TS_OFF, VLEVEL_M, "\nNode %u initiating position learning broadcast packet: %u\r\n", nodeID, initialPktCount);
   }
 
   /* Create position learning broadcast packet */
@@ -278,7 +380,9 @@ static void PositionLearningInitialBroadcastTimerCb(void *context)
   plPacket.packetID = (uint16_t)(((uint16_t)nodeID << 8) | sequenceNumber);
   plPacket.direction = PACKET_DIRECTION_BROADCAST;
   plPacket.txNodeID = nodeID;
-  plPacket.txNodeType = PACKET_NODE_TYPE_REPEATER;
+  plPacket.txNodeType = (nodeType == 'E') ? PACKET_NODE_TYPE_END_DEVICE :
+                       (nodeType == 'R') ? PACKET_NODE_TYPE_REPEATER :
+                                           PACKET_NODE_TYPE_GATEWAY;;
   plPacket.positionLearningMode = 1; // Set position learning mode flag
   plPacket.preambleSize = LORA_PREAMBLE_LENGTH;
   plPacket.payloadSize = 3;
@@ -318,4 +422,353 @@ static void PL3StartTimerCb(void *context)
   (void)context;
 
   UTIL_SEQ_SetTask((1U << CFG_SEQ_Task_PL3RouteMapping), CFG_SEQ_Prio_0);
+}
+
+/* Checks whether a node is a routing node (i.e., a repeater/ gateway)
+ * Basically this is used to filter End devices which are not routing nodes. 
+ */
+static bool NetworkGraph_IsRoutingNode(uint8_t nodeType)
+{
+  return ((nodeType == PACKET_NODE_TYPE_GATEWAY) || (nodeType == PACKET_NODE_TYPE_REPEATER));
+}
+
+
+/* Return graph's index for a given nodeID 
+ * If not found --> return -1
+ */
+static int8_t NetworkGraph_FindNodeIndex(uint8_t graphNodeID)
+{
+  uint8_t i;
+
+  for (i = 0U; i < NetworkGraph.nodeCount; i++)
+  {
+    if ((NetworkGraph.nodes[i].isValid) && (NetworkGraph.nodes[i].nodeID == graphNodeID))
+    {
+      return (int8_t)i;
+    }
+  }
+
+  return -1;
+}
+
+
+/* Add new node to the NetworkGraph/ Update exisitng node 
+ * returns the graph index of the added/updated node
+ */
+static int8_t NetworkGraph_AddOrUpdateNode(uint8_t graphNodeID, uint8_t graphNodeType, uint16_t graphNodeDistanceValue, bool updateDistanceValue)
+{
+  int8_t nodeIndex;
+
+  if (!NetworkGraph_IsRoutingNode(graphNodeType))
+  {
+    return -1;
+  }
+
+  // Updating exisiting graph node
+  nodeIndex = NetworkGraph_FindNodeIndex(graphNodeID);
+  if (nodeIndex >= 0)
+  {
+    NetworkGraph.nodes[nodeIndex].nodeType = graphNodeType;
+
+    if (graphNodeType == PACKET_NODE_TYPE_GATEWAY)
+    {
+      NetworkGraph.nodes[nodeIndex].nearestGatewayID = graphNodeID;
+      NetworkGraph.nodes[nodeIndex].hasRouteToGateway = true;
+      NetworkGraph.nodes[nodeIndex].distanceValue = 0U;
+      return nodeIndex;
+    }
+
+    if (updateDistanceValue)
+    {
+      NetworkGraph.nodes[nodeIndex].distanceValue = graphNodeDistanceValue;
+    }
+    return nodeIndex;
+  }
+
+  if (NetworkGraph.nodeCount >= NETWORK_GRAPH_MAX_NODES)
+  {
+    return -1;
+  }
+
+  // Adding a new graph node.
+  nodeIndex = (int8_t)NetworkGraph.nodeCount;
+  NetworkGraph.nodes[nodeIndex].isValid = true;
+  NetworkGraph.nodes[nodeIndex].nodeID = graphNodeID;
+  NetworkGraph.nodes[nodeIndex].nodeType = graphNodeType;
+  NetworkGraph.nodes[nodeIndex].nearestGatewayID = (graphNodeType == PACKET_NODE_TYPE_GATEWAY) ? graphNodeID : 0U;
+  NetworkGraph.nodes[nodeIndex].hasRouteToGateway = (graphNodeType == PACKET_NODE_TYPE_GATEWAY);
+  NetworkGraph.nodes[nodeIndex].distanceValue = (graphNodeType == PACKET_NODE_TYPE_GATEWAY) ? 0U : graphNodeDistanceValue;
+  NetworkGraph.nodeCount++;
+
+  return nodeIndex;
+}
+
+
+/* Setting a directed link in NetworkGraph with distance as the weight */
+static void NetworkGraph_SetDirectedLink(uint8_t fromIndex, uint8_t toIndex, uint16_t distance)
+{
+  if ((fromIndex >= NetworkGraph.nodeCount) || (toIndex >= NetworkGraph.nodeCount))
+  {
+    return;
+  }
+
+  NetworkGraph.links[fromIndex][toIndex].isValid = true;
+  NetworkGraph.links[fromIndex][toIndex].distance = distance;
+}
+
+
+/* Function executed to first add this repeater and its neighbours to the NetworkGraph*/
+static void NetworkGraph_AddLocalNeighbours(void)
+{
+  uint8_t localNodeType;
+  int8_t localNodeIndex;
+  int8_t neighbourNodeIndex;
+  uint8_t i;
+
+  localNodeType = (nodeType == 'E') ? PACKET_NODE_TYPE_END_DEVICE :
+                  (nodeType == 'R') ? PACKET_NODE_TYPE_REPEATER :
+                                      PACKET_NODE_TYPE_GATEWAY;
+
+  localNodeIndex = NetworkGraph_AddOrUpdateNode(nodeID,
+                                                localNodeType,
+                                                distanceValue,
+                                                (localNodeType == PACKET_NODE_TYPE_GATEWAY));
+  if (localNodeIndex < 0)
+  {
+    return;
+  }
+
+  for (i = 0U; i < NeighbourCount; i++)
+  {
+    if (!NetworkGraph_IsRoutingNode(Neighbours[i].Type))
+    {
+      continue;
+    }
+
+    neighbourNodeIndex = NetworkGraph_AddOrUpdateNode(Neighbours[i].ID,
+                                                      Neighbours[i].Type,
+                                                      Neighbours[i].DistanceValue,
+                                                      (Neighbours[i].Type == PACKET_NODE_TYPE_GATEWAY));
+    if (neighbourNodeIndex >= 0)
+    {
+      NetworkGraph_SetDirectedLink((uint8_t)neighbourNodeIndex, (uint8_t)localNodeIndex, Neighbours[i].Distance);
+    }
+  }
+}
+
+
+/* Updating distanceValue, nearestGatewayId, nextUpstreamNodeID, nextDownstreamNodeID of
+ * this repeater (global variables) and the Neighbours (local records)
+ */
+static void NetworkGraph_UpdateLocalRoutingInfo(void)
+{
+  uint8_t i;
+  int8_t graphNodeIndex;
+  uint8_t localNodeType;
+  uint8_t localNearestGatewayID;
+  uint16_t localDistanceValue;
+  uint16_t lowestDistanceValue = 0xFFFFU;
+  uint16_t highestDistanceValue = 0U;
+  bool upstreamFound = false;
+  bool downstreamFound = false;
+
+  localNodeType = (nodeType == 'E') ? PACKET_NODE_TYPE_END_DEVICE :
+                  (nodeType == 'R') ? PACKET_NODE_TYPE_REPEATER :
+                                      PACKET_NODE_TYPE_GATEWAY;
+
+  graphNodeIndex = NetworkGraph_FindNodeIndex(nodeID);
+  if ((graphNodeIndex >= 0) && (NetworkGraph.nodes[graphNodeIndex].hasRouteToGateway))
+  {
+    nearestGatewayID = NetworkGraph.nodes[graphNodeIndex].nearestGatewayID;
+    distanceValue = NetworkGraph.nodes[graphNodeIndex].distanceValue;
+  }
+
+  localNearestGatewayID = nearestGatewayID;
+  localDistanceValue = distanceValue;
+  nextUptreamNodeID = nodeID;
+  nextDownstreamNodeID = nodeID;
+
+  if (localNodeType == PACKET_NODE_TYPE_GATEWAY)
+  {
+    nearestGatewayID = nodeID;
+    nextUptreamNodeID = nodeID;
+    localNearestGatewayID = nodeID;
+    localDistanceValue = 0U;
+    distanceValue = 0U;
+  }
+
+  for (i = 0U; i < NeighbourCount; i++)
+  {
+    graphNodeIndex = NetworkGraph_FindNodeIndex(Neighbours[i].ID);
+    if (graphNodeIndex < 0)
+    {
+      continue;
+    }
+
+    Neighbours[i].DistanceValue = NetworkGraph.nodes[graphNodeIndex].distanceValue;
+
+    if ((!NetworkGraph_IsRoutingNode(Neighbours[i].Type)) ||
+        (!NetworkGraph.nodes[graphNodeIndex].hasRouteToGateway) ||
+        (NetworkGraph.nodes[graphNodeIndex].nearestGatewayID != localNearestGatewayID))
+    {
+      continue;
+    }
+
+    // Updating nextUptreamNodeID
+    if ((localNodeType == PACKET_NODE_TYPE_REPEATER) &&
+        ((!upstreamFound) || (Neighbours[i].DistanceValue < lowestDistanceValue)))
+    {
+      lowestDistanceValue = Neighbours[i].DistanceValue;
+      nextUptreamNodeID = Neighbours[i].ID;
+      upstreamFound = true;
+    }
+
+    // Updating nextDownstreamNodeID
+    if ((Neighbours[i].DistanceValue > localDistanceValue) &&
+        ((!downstreamFound) || (Neighbours[i].DistanceValue > highestDistanceValue)))
+    {
+      highestDistanceValue = Neighbours[i].DistanceValue;
+      nextDownstreamNodeID = Neighbours[i].ID;
+      downstreamFound = true;
+    }
+  }
+
+  if (DEBUG_PL)
+  {
+    APP_LOG(TS_OFF, VLEVEL_M, "PL3| Local routing: nearest GW %u, DistanceValue %u, upstream %u, downstream %u\r\n",
+            nearestGatewayID,
+            distanceValue,
+            nextUptreamNodeID,
+            nextDownstreamNodeID);
+  }
+}
+
+/* Dijkstra's algorithm:
+ * Calculate shortest distances from a given source RP/GW to all routing nodes in the NetworkGraph 
+ * The result is put in distances[NETWORK_GRAPH_MAX_NODES] array.
+ * i.e., distances[i] =  shortest distance from NetworkGraph.nodes[sourceIndex] to NetworkGraph.nodes[i]
+ * For nodes that cannot be reached, distances[i] = NETWORK_GRAPH_DISTANCE_INF
+ */
+static void NetworkGraph_CalculateShortestPaths(uint8_t sourceIndex, uint32_t distances[NETWORK_GRAPH_MAX_NODES])
+{
+  bool visited[NETWORK_GRAPH_MAX_NODES] = {0};
+  uint8_t i;
+  uint8_t neighbourIndex;
+  uint8_t selectedIndex;
+  uint32_t selectedDistance;
+  uint32_t candidateDistance;
+
+  for (i = 0U; i < NETWORK_GRAPH_MAX_NODES; i++)
+  {
+    distances[i] = NETWORK_GRAPH_DISTANCE_INF;
+  }
+
+  if ((sourceIndex >= NetworkGraph.nodeCount) || (!NetworkGraph.nodes[sourceIndex].isValid))
+  {
+    return;
+  }
+
+  distances[sourceIndex] = 0U;
+
+  for (i = 0U; i < NetworkGraph.nodeCount; i++)
+  {
+    selectedIndex = NETWORK_GRAPH_MAX_NODES;
+    selectedDistance = NETWORK_GRAPH_DISTANCE_INF;
+
+    for (neighbourIndex = 0U; neighbourIndex < NetworkGraph.nodeCount; neighbourIndex++)
+    {
+      if ((!visited[neighbourIndex]) &&
+          (NetworkGraph.nodes[neighbourIndex].isValid) &&
+          (distances[neighbourIndex] < selectedDistance))
+      {
+        selectedDistance = distances[neighbourIndex];
+        selectedIndex = neighbourIndex;
+      }
+    }
+
+    if (selectedIndex == NETWORK_GRAPH_MAX_NODES)
+    {
+      break;
+    }
+
+    visited[selectedIndex] = true;
+
+    for (neighbourIndex = 0U; neighbourIndex < NetworkGraph.nodeCount; neighbourIndex++)
+    {
+      if ((!NetworkGraph.nodes[neighbourIndex].isValid) ||
+          (!NetworkGraph.links[selectedIndex][neighbourIndex].isValid) ||
+          (distances[selectedIndex] == NETWORK_GRAPH_DISTANCE_INF))
+      {
+        continue;
+      }
+
+      candidateDistance = distances[selectedIndex] + NetworkGraph.links[selectedIndex][neighbourIndex].distance;
+      if (candidateDistance < distances[neighbourIndex])
+      {
+        distances[neighbourIndex] = candidateDistance;
+      }
+    }
+  }
+}
+
+static void NetworkGraph_AddPL2Packet(const LoRaPacket_t *packet)
+{
+  uint8_t deviceID;
+  uint8_t deviceType;
+  uint8_t neighbourCount;
+  uint8_t availableNeighbourCount;
+  uint8_t i;
+  uint16_t payloadIndex;
+  uint8_t neighbourID;
+  uint8_t neighbourType;
+  uint16_t neighbourDistance;
+  int8_t deviceNodeIndex;
+  int8_t neighbourNodeIndex;
+
+  if ((packet == NULL) || (packet->payloadSize < 4U) || (packet->payload[0] != 2U))
+  {
+    return;
+  }
+
+  deviceID = packet->payload[1];
+  deviceType = packet->payload[2];
+  neighbourCount = packet->payload[3];
+
+  if (!NetworkGraph_IsRoutingNode(deviceType))
+  {
+    return;
+  }
+
+  availableNeighbourCount = (uint8_t)((packet->payloadSize - 4U) / 4U);
+  if (neighbourCount > availableNeighbourCount)
+  {
+    neighbourCount = availableNeighbourCount;
+  }
+
+  deviceNodeIndex = NetworkGraph_AddOrUpdateNode(deviceID, deviceType, 0U, false);
+  if (deviceNodeIndex < 0)
+  {
+    return;
+  }
+
+  payloadIndex = 4U;
+  for (i = 0U; i < neighbourCount; i++)
+  {
+    neighbourID = packet->payload[payloadIndex++];
+    neighbourType = packet->payload[payloadIndex++];
+    neighbourDistance = (uint16_t)(((uint16_t)packet->payload[payloadIndex] << 8) |
+                                   packet->payload[payloadIndex + 1U]);
+    payloadIndex += 2U;
+
+    if (!NetworkGraph_IsRoutingNode(neighbourType))
+    {
+      continue;
+    }
+
+    neighbourNodeIndex = NetworkGraph_AddOrUpdateNode(neighbourID, neighbourType, 0U, false);
+    if (neighbourNodeIndex >= 0)
+    {
+      NetworkGraph_SetDirectedLink((uint8_t)neighbourNodeIndex, (uint8_t)deviceNodeIndex, neighbourDistance);
+    }
+  }
 }

@@ -46,22 +46,9 @@ void CAD_Mode_Init(void)
 
 void CAD_Mode_OnCadDone(bool channelActivityDetected)
 {
-  if(activeMode){ // In active mode, performing CAD on demand for carrier sensing
-    cadActivityDetected = channelActivityDetected;
-    cadResultReady = true;
-    return;
-  }
-  else{ // In low power CAD mode, performing periodic CAD
-    APP_LOG(TS_OFF, VLEVEL_M, "CAD done: %s\r\n",
-          channelActivityDetected ? "activity detected" : "channel clear");
-
-    if (channelActivityDetected){
-      Radio.Rx(CAD_RX_TIMEOUT_VALUE);
-    }
-    else{
-      Radio.Sleep();
-    }
-  }
+  cadActivityDetected = channelActivityDetected;
+  cadResultReady = true;
+  // APP_LOG(TS_OFF, VLEVEL_M, "CAD done: %s\r\n", channelActivityDetected ? "activity detected" : "channel clear");
 }
 
 static void CadTimerCb(void *context)

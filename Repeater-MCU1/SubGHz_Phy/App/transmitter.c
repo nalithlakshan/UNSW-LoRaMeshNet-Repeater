@@ -28,8 +28,8 @@
 #define DEBUG_TX                     1
 
 #define TX_TIMEOUT_VALUE             3000
-#define TX_BACKOFF_MIN_MS            10U
-#define TX_BACKOFF_MAX_MS            50U
+#define TX_BACKOFF_MIN_MS            50U
+#define TX_BACKOFF_MAX_MS            1000U
 
 TransmitBuffer_t Transmit_Buffer = {0};
 bool txLoopRunning = false;
@@ -134,7 +134,7 @@ void Transmitter_TxLoop(void)
                     cadWaitMs++;
                 }
 
-                channelFree = !cadActivityDetected;
+                channelFree = (!cadActivityDetected && cadResultReady);
                 if(!channelFree && DEBUG_TX){
                     APP_LOG(TS_OFF, VLEVEL_M, "Channel is Busy!\r\n");
                 }       

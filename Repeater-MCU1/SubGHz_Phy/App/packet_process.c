@@ -228,7 +228,6 @@ void PacketProcess_Schedule(void)
  * 1. Check if positionLearningMode is enabled.
  *    1.1 if payload's first byte ==1, it is a PL1 packet, call ReceivedPktHanderPL1(packet)
  *    1.2 if payload's first byte ==2, it is a PL2 packet, call ReceivedPktHanderPL2(packet)
- *    1.3 if payload's first byte ==3, it is a PL3 packet, call ReceivedPktHanderPL3(packet)
  * 
  * 2. else check if it is packet addressed to this repeater or whether it is a broadcast packet. 
  *    If so re-configure and submit it for retransmission.
@@ -267,10 +266,6 @@ static void PacketProcess(void)
         else if (packet.payload[0] == 2U)
         {
           ReceivedPktHanderPL2(&packet);
-        }
-        else if (packet.payload[0] == 3U)
-        {
-          ReceivedPktHanderPL3(&packet);
         }
       }
 
