@@ -82,12 +82,6 @@ static RadioEvents_t RadioEvents;
 
 /* USER CODE BEGIN PV */
 
-// PV for Rx data
-static uint8_t RxTextBuf[MAX_APP_BUFFER_SIZE];
-uint16_t RxBufferSize = 0;  // Last  Received Buffer Size
-int16_t RssiValue = 0;       // Last  Received packet Rssi
-int8_t SnrValue = 0;        // Last  Received packet SNR (in Lora modulation)
-
 // PV for I2C
 static uint8_t I2CRxBuffer[MAX_APP_BUFFER_SIZE];
 
@@ -147,10 +141,10 @@ void SubghzApp_Init(void)
                     LORA_SPREADING_FACTOR, LORA_CODINGRATE,
                     LORA_PREAMBLE_LENGTH, LORA_FIX_LENGTH_PAYLOAD_ON,
                     true, 0, 0, LORA_IQ_INVERSION_ON, TX_TIMEOUT_VALUE);
-  Radio.SetRxConfig(MODEM_LORA, LORA_BANDWIDTH, LORA_SPREADING_FACTOR,
-                    LORA_CODINGRATE, 0, LORA_PREAMBLE_LENGTH,
-                    LORA_SYMBOL_TIMEOUT, LORA_FIX_LENGTH_PAYLOAD_ON, 0,
-                    true, 0, 0, LORA_IQ_INVERSION_ON, false);
+  // Radio.SetRxConfig(MODEM_LORA, LORA_BANDWIDTH, LORA_SPREADING_FACTOR,
+  //                   LORA_CODINGRATE, 0, LORA_PREAMBLE_LENGTH,
+  //                   LORA_SYMBOL_TIMEOUT, LORA_FIX_LENGTH_PAYLOAD_ON, 0,
+  //                   true, 0, 0, LORA_IQ_INVERSION_ON, false);
   CAD_Mode_ConfigRadio();
   Radio.SetMaxPayloadLength(MODEM_LORA, MAX_APP_BUFFER_SIZE);
   Radio.Sleep();
@@ -236,7 +230,7 @@ void HAL_I2C_SlaveRxCpltCallback(I2C_HandleTypeDef *hi2c)
 
       // Ignore packets sent by this repeater's own trasnmitter
       if (receivedPacket.txNodeID == nodeID){
-        APP_LOG(TS_OFF, VLEVEL_M, "It is from own Tx. Therefore, Igored!\r\n")
+        APP_LOG(TS_OFF, VLEVEL_M, "It is from own Tx. Therefore, Igored!\r\n");
         HAL_I2C_Slave_Receive_IT(&hi2c2, I2CRxBuffer, MAX_APP_BUFFER_SIZE);
         return;
       }
@@ -312,88 +306,8 @@ void HAL_I2C_ErrorCallback(I2C_HandleTypeDef *hi2c)
 static void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t LoraSnr_FskCfo)
 {
   /* USER CODE BEGIN OnRxDone */
-  LoRaPacket_t receivedPacket;
-  const char *packetString;
-
-  /* Clear BufferRx*/
-  memset(RxTextBuf, 0, MAX_APP_BUFFER_SIZE);
-
-  /* Record payload size*/
-  RxBufferSize = size;
-  if (RxBufferSize > MAX_APP_BUFFER_SIZE)
-  {
-    APP_LOG(TS_OFF, VLEVEL_M, "RX packet too large, size=%u\r\n", RxBufferSize);
-    return;
-  }
-
-  memcpy(RxTextBuf, payload, RxBufferSize);
-
-  if (RxBufferSize < LORA_PACKET_HEADER_SIZE)
-  {
-    APP_LOG(TS_OFF, VLEVEL_M, "RX packet too short, size=%u\r\n", RxBufferSize);
-    return;
-  }
-
-  receivedPacket = Packet_Decode(RxTextBuf);
-  packetString = Packet_To_String(&receivedPacket);
-  APP_LOG(TS_OFF, VLEVEL_M, "RX done, size=%u, RSSI=%d, SNR=%d, %s\r\n",
-          size, rssi, LoraSnr_FskCfo, packetString);
-
-  //If in CAD mode and received a valid packet, switch to active mode
-  if (!activeMode) //?? Later Update to check if it's a WOR packet with same nearestGwID
-  {
-    APP_LOG(TS_OFF, VLEVEL_M, "Packet detected, switching to active mode\r\n");
-    EnableActiveMode();
-  }
-
-  if (receivedPacket.rxNodeID != nodeID && receivedPacket.direction != PACKET_DIRECTION_BROADCAST)
-  {
-    APP_LOG(TS_OFF, VLEVEL_M, "not intended for me\r\n");
-  }
-  else
-  {
-    uint8_t nextRxID;
-
-    if (receivedPacket.direction == PACKET_DIRECTION_DOWNSTREAM)
-    {
-      nextRxID = nextDownstreamNodeID;
-    }
-    else if (receivedPacket.direction == PACKET_DIRECTION_UPSTREAM)
-    {
-      nextRxID = nextUptreamNodeID;
-    }
-    else
-    {
-      nextRxID = 0; // For broadcast, set nextRxID to 0 or any value as it won't be used for routing
-    }
-
-    receivedPacket.txNodeID = nodeID;
-    receivedPacket.txNodeType = (nodeType == 'E') ? PACKET_NODE_TYPE_END_DEVICE :
-                                (nodeType == 'R') ? PACKET_NODE_TYPE_REPEATER :
-                                                    PACKET_NODE_TYPE_GATEWAY;
-    receivedPacket.txDistanceValue = distanceValue;
-    receivedPacket.txBatteryPercentage = (uint8_t)batteryPercentage;
-    receivedPacket.rxNodeID = nextRxID;
-    receivedPacket.rxNodeType = ((receivedPacket.direction == PACKET_DIRECTION_UPSTREAM) &&
-                                 (nextRxID == nearestGatewayID)) ? PACKET_NODE_TYPE_GATEWAY : PACKET_NODE_TYPE_REPEATER;
-    receivedPacket.rxDistanceValue = 0;
-    receivedPacket.nearestGwID = nearestGatewayID;
-
-    if (Transmitter_Submit(&receivedPacket))
-    {
-      uint8_t UartMsg[512] = {0};
-      packetString = Packet_To_String(&receivedPacket);
-      int UartMsgSize = snprintf((char *)UartMsg, sizeof(UartMsg),
-                                 "Node %d: Submitted Repeating Packet %s\r\n", nodeID, packetString);
-      APP_LOG(TS_OFF, VLEVEL_M, "Submitted the received packet for repeating\r\n");
-      HAL_UART_Transmit(&huart2, UartMsg, (uint16_t)UartMsgSize, HAL_MAX_DELAY);
-    }
-    else
-    {
-      APP_LOG(TS_OFF, VLEVEL_M, "repeat skipped, transmit buffer full\r\n");
-    }
-  }
-  
+  APP_LOG(TS_OFF, VLEVEL_M, "RX Done\r\n");
+  Radio.Sleep();
   /* USER CODE END OnRxDone */
 }
 
