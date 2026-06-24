@@ -8,6 +8,7 @@
 #include "transmitter.h"
 
 #include "cad_mode.h"
+#include "idle_timer.h"
 #include "packet.h"
 #include "radio.h"
 #include "stm32_seq.h"
@@ -33,6 +34,7 @@
 
 TransmitBuffer_t Transmit_Buffer = {0};
 bool txLoopRunning = false;
+static volatile bool txInProgress = false;
 
 
 static UTIL_TIMER_Object_t TxTimer;
@@ -70,6 +72,7 @@ bool Transmitter_Submit(const LoRaPacket_t *packet)
     UTILS_EXIT_CRITICAL_SECTION();
 
     if(startTxLoop){
+        IdleTimer_Reset();
         UTIL_SEQ_SetTask((1U << CFG_SEQ_Task_LoRaTxLoop), CFG_SEQ_Prio_0);
     }
 
@@ -144,10 +147,16 @@ void Transmitter_TxLoop(void)
             if(DEBUG_TX){
                 APP_LOG(TS_OFF, VLEVEL_M, "Transmitting packet ID %u\r\n", packetToTransmit.packetID);
             }
+            txInProgress = true;
             Radio.Send(EncodedTxPkt, EncodedTxPktSize);
         }
     }
     txLoopRunning = false;
+}
+
+bool Transmitter_IsBusy(void)
+{
+    return (txLoopRunning || txInProgress || (Transmit_Buffer.count > 0U));
 }
 
 void Transmitter_Init(void)
@@ -189,6 +198,7 @@ void Transmitter_OnTxDone(void)
     {
         APP_LOG(TS_OFF, VLEVEL_M, "TX done\r\n");
     }
+    txInProgress = false;
     Radio.SetChannel(RF_FREQUENCY);
     Radio.Sleep();
 }
@@ -199,6 +209,7 @@ void Transmitter_OnTxTimeout(void)
     {
         APP_LOG(TS_OFF, VLEVEL_M, "TX timeout\r\n");
     }
+    txInProgress = false;
 }
 
 

@@ -58,6 +58,7 @@ bool PacketFifo_Pop(PacketFifo_t *fifo, LoRaPacket_t *packet);
 
 void PacketProcess_Init(void);
 void PacketProcess_Schedule(void);
+bool PacketProcess_IsBusy(void);
 void PacketProcess_ReconfigureAndSubmit(LoRaPacket_t *packet);
 
 #ifdef __cplusplus

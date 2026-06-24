@@ -43,10 +43,10 @@ uint16_t distanceValue = 0; // Distance value to nearest gateway, to be updated 
 uint8_t sequenceNumber = 0;
 
 //Power Management Flags
-volatile bool activeMode = false;
 volatile bool awaitingWorAck = false;
 volatile bool awaitingTransmissionEndFlag = false;
 volatile bool inStandbyMode = false;
+const uint32_t MCU1_IDLE_SLEEP_DELAY_MS = 2000U;
 
 
 // Routing Info
@@ -169,44 +169,13 @@ void SubghzApp_Init(void)
   //   CAD_Mode_Init();
   // }
 
-  HAL_GPIO_WritePin(WAKE_MCU2_GPIO_Port, WAKE_MCU2_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(WAKE_MCU2_GPIO_Port, WAKE_MCU2_Pin, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(WAKE_MCU3_GPIO_Port, WAKE_MCU3_Pin, GPIO_PIN_SET);
 
   /* USER CODE END SubghzApp_Init_2 */
 }
 
 /* USER CODE BEGIN EF */
-
-/*Enable ACTIVE MODE
-  Enabling Active Mode including waking all other MCUs.
-  Call this function upon receiving a WOR packet in CAD mode.
-  */
-void EnableActiveMode()
-{
-  activeMode = true;
-  // HAL_GPIO_WritePin(WAKE_MCU2_GPIO_Port, WAKE_MCU2_Pin, GPIO_PIN_SET);
-  // HAL_GPIO_WritePin(WAKE_MCU3_GPIO_Port, WAKE_MCU3_Pin, GPIO_PIN_SET);
-}
-
-/*DISABLE ACTIVE MODE 
-    if Transmit_Buffer is empty (i.e. no packet pending to be tranmitted) 
-    and not awaiting a WOR Acknowlegement 
-    and not awaiting a transmission end flag
-    and not currently engaged in standby packet monitoring
-  */ 
-bool DisableActiveMode(void)
-{
-  if(Transmit_Buffer.count == 0U && !awaitingWorAck && !awaitingTransmissionEndFlag && !inStandbyMode)
-  {
-    activeMode = false;
-    // HAL_GPIO_WritePin(WAKE_MCU2_GPIO_Port, WAKE_MCU2_Pin, GPIO_PIN_RESET);
-    // HAL_GPIO_WritePin(WAKE_MCU3_GPIO_Port, WAKE_MCU3_Pin, GPIO_PIN_RESET);
-    return true;
-  }
-  else
-  {
-    return false;
-  }
-}
 
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {

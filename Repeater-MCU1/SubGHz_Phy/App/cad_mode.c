@@ -54,7 +54,7 @@ void CAD_Mode_OnCadDone(bool channelActivityDetected)
 static void CadTimerCb(void *context)
 {
   (void)context;
-  if (!activeMode) //run if in CAD mode
+  if (Radio.GetStatus() == RF_IDLE)
   {
     UTIL_SEQ_SetTask((1U << CFG_SEQ_Task_LoRaCadScan), CFG_SEQ_Prio_0);
   }
@@ -73,4 +73,3 @@ static void CAD_Scan(void)
   Radio.SetChannel(RF_FREQUENCY_WOR);
   Radio.StartCad();
 }
-

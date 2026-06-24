@@ -6,6 +6,7 @@
  */
 
 #include "packet_process.h"
+#include "idle_timer.h"
 #include "position_learning.h"
 #include "subghz_phy_app.h"
 #include "transmitter.h"
@@ -24,6 +25,7 @@ PacketIDFifo_t higherDistanceDuplicatePktBuf = {0};
 PacketIDFifo_t pendingWorAckNodes = {0};
 PacketFifo_t rxBuffer = {0};
 PacketFifo_t standbyBuffer = {0};
+static volatile bool packetProcessRunning = false;
 
 static void PacketProcess(void);
 static void PacketProcess_StandbyTimerCb(void *context);
@@ -219,7 +221,13 @@ void PacketProcess_Init(void)
 //Packet Processing Sequencer Task Scheduler
 void PacketProcess_Schedule(void)
 {
+  IdleTimer_Reset();
   UTIL_SEQ_SetTask((1U << CFG_SEQ_Task_PacketProcess), CFG_SEQ_Prio_0);
+}
+
+bool PacketProcess_IsBusy(void)
+{
+  return (packetProcessRunning || (rxBuffer.count > 0U) || (standbyBuffer.count > 0U));
 }
 
 /* PACKET PROCESSING FUNCTION
@@ -249,6 +257,8 @@ void PacketProcess_Schedule(void)
 static void PacketProcess(void)
 {
   LoRaPacket_t packet = {0};
+
+  packetProcessRunning = true;
 
   while (PacketFifo_Pop(&rxBuffer, &packet))
   {
@@ -319,6 +329,8 @@ static void PacketProcess(void)
       continue;
     }
   }
+
+  packetProcessRunning = false;
 }
 
 static bool PacketProcess_StartStandbyTimer(void)

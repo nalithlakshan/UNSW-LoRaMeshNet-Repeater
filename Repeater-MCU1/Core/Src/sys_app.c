@@ -30,7 +30,7 @@
 #include "sys_debug.h"
 
 /* USER CODE BEGIN Includes */
-#include "subghz_phy_app.h"
+#include "idle_timer.h"
 #include "usart.h"
 
 /* USER CODE END Includes */
@@ -117,6 +117,7 @@ void SystemApp_Init(void)
 #endif /* LOW_POWER_DISABLE */
 
   /* USER CODE BEGIN SystemApp_Init_2 */
+  IdleTimer_Init();
 
   /* USER CODE END SystemApp_Init_2 */
 }
@@ -127,13 +128,7 @@ void SystemApp_Init(void)
 void UTIL_SEQ_Idle(void)
 {
   /* USER CODE BEGIN UTIL_SEQ_Idle_1 */
-  DisableActiveMode();
-  if (activeMode == true)
-  {
-    return;
-  }
-  if(HAL_GPIO_ReadPin(BTN_GPIO_EXTI9_GPIO_Port, BTN_GPIO_EXTI9_Pin) == GPIO_PIN_RESET 
-  || HAL_GPIO_ReadPin(WAKE_INT_MCU4_GPIO_Port, WAKE_INT_MCU4_Pin) == GPIO_PIN_SET)
+  if (!IdleTimer_ShouldEnterLowPower())
   {
     return;
   }

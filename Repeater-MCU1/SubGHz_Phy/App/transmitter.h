@@ -30,6 +30,7 @@ typedef struct
 extern TransmitBuffer_t Transmit_Buffer;
 
 bool Transmitter_Submit(const LoRaPacket_t *packet);
+bool Transmitter_IsBusy(void);
 void Transmitter_TxLoop(void);
 void Transmitter_Init(void);
 void Transmitter_StartPeriodicED(void);
