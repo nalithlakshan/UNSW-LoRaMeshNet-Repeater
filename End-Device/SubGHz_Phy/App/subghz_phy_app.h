@@ -95,6 +95,7 @@ extern volatile bool inStandbyMode;
 extern NeighbourInfo_t Neighbours[MAX_NEIGHBOURS];
 extern uint8_t NeighbourCount;
 extern uint8_t nextUptreamNodeID;
+extern uint16_t nextUptreamNodeDV;
 extern uint8_t nextDownstreamNodeID;
 extern uint8_t nearestGatewayID;
 extern char direction;

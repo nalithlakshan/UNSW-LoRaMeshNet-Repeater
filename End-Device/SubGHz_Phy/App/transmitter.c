@@ -252,6 +252,7 @@ void Transmitter_OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t 
         UTIL_TIMER_Stop(&WorReplyTimer);
         Radio.Sleep();
         nextUptreamNodeID = packet.txNodeID;
+        nextUptreamNodeDV = packet.txDistanceValue;
         SelectedUpstreamNodeType = packet.txNodeType;
         APP_LOG(TS_OFF, VLEVEL_M, "WOR reply received from node %u\r\n", nextUptreamNodeID);
 
@@ -323,6 +324,7 @@ static void TxTask(void)
         {
             UnknownUpstreamRetryUsed = true;
             nextUptreamNodeID = 0U;
+            nextUptreamNodeDV = 0U;
             APP_LOG(TS_OFF, VLEVEL_M, "No WOR reply, retrying with unknown upstream node\r\n");
             if (!SubmitWorPacket())
             {
@@ -365,7 +367,7 @@ static bool SubmitWorPacket(void)
     packet.txBatteryPercentage = (uint8_t)batteryPercentage;
     packet.rxNodeID = nextUptreamNodeID;
     packet.rxNodeType = PACKET_NODE_TYPE_REPEATER;
-    packet.rxDistanceValue = 0U;
+    packet.rxDistanceValue = (nextUptreamNodeID > 0U) ? nextUptreamNodeDV : 0U;
     packet.ackNodeID = 0U;
     packet.nearestGwID = 0U;
     packet.packetID = (uint16_t)(((uint16_t)nodeID << 8) | nextSequenceNumber);
@@ -415,7 +417,7 @@ static bool SubmitDataPacket(void)
     packet.txBatteryPercentage = (uint8_t)batteryPercentage;
     packet.rxNodeID = nextUptreamNodeID;
     packet.rxNodeType = SelectedUpstreamNodeType;
-    packet.rxDistanceValue = 0U;
+    packet.rxDistanceValue = (nextUptreamNodeID > 0U) ? nextUptreamNodeDV : 0U;
     packet.ackNodeID = 0U;
     packet.nearestGwID = 0U;
     packet.packetID = (uint16_t)(((uint16_t)nodeID << 8) | nextSequenceNumber);

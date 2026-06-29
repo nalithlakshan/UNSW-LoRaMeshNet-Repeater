@@ -51,6 +51,7 @@ volatile bool inStandbyMode = false;
 NeighbourInfo_t Neighbours[MAX_NEIGHBOURS] = {0};
 uint8_t NeighbourCount = 0;
 uint8_t nextUptreamNodeID = 0;
+uint16_t nextUptreamNodeDV = 0U;
 uint8_t nextDownstreamNodeID = 0;
 uint8_t nearestGatewayID = 0;
 char direction = 'U';  // 'U' for upstream, 'D' for downstream, 'B' for broadcast
@@ -168,10 +169,10 @@ void SubghzApp_Init(void)
   UTIL_SEQ_RegTask((1U << CFG_SEQ_Task_BTN), 0, PushBtnTask);
 
 
-  if(nodeType == 'E')
-  {
-    Transmitter_StartPeriodicED();
-  }
+  // if(nodeType == 'E')
+  // {
+  //   Transmitter_StartPeriodicED();
+  // }
 
   /* USER CODE END SubghzApp_Init_2 */
 }
