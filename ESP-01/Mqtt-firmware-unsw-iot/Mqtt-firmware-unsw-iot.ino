@@ -2,8 +2,11 @@
 #include <WiFiClientSecure.h>
 #include <PubSubClient.h>
 
-const char* ssid = "UNSW-IoT";
-const char* password = "yzPaLPSURFYERVTwag==";
+const char* ssid1 = "UNSW-IoT";
+const char* password1 = "dyf6r66S/FTCCiJUjQ==";
+
+const char* ssid2 = "YN-WiFi";
+const char* password2 = "dimobatta1";
 
 const char* mqttServer = "7a95f954fa024e02b2abee411a96e857.s1.eu.hivemq.cloud";
 const int mqttPort = 8883;
@@ -67,19 +70,53 @@ void loop() {
   delay(1000);
 }
 
-void connectWiFi() {
-  Serial.println("Connecting to WiFi...");
+bool tryConnectWiFi(const char* ssid, const char* password, unsigned long timeoutMs) {
+  Serial.print("Connecting to WiFi: ");
+  Serial.println(ssid);
 
-  WiFi.mode(WIFI_STA);
+  WiFi.disconnect();
+  delay(500);
+
   WiFi.begin(ssid, password);
 
-  while (WiFi.status() != WL_CONNECTED) {
+  unsigned long startTime = millis();
+
+  while (WiFi.status() != WL_CONNECTED && millis() - startTime < timeoutMs) {
     delay(500);
     Serial.print(".");
   }
 
   Serial.println();
+
+  return WiFi.status() == WL_CONNECTED;
+}
+
+void connectWiFi() {
+  WiFi.mode(WIFI_STA);
+
+  if (!tryConnectWiFi(ssid1, password1, 10000)) {
+    Serial.println("Failed to connect to UNSW-IoT. Trying YN-WiFi...");
+
+    if (!tryConnectWiFi(ssid2, password2, 10000)) {
+      Serial.println("Failed to connect to both WiFi networks.");
+
+      while (WiFi.status() != WL_CONNECTED) 
+      {
+        delay(1000);
+        Serial.println("Retrying...");
+        if (tryConnectWiFi(ssid1, password1, 10000)) {
+          break;
+        }
+        if (tryConnectWiFi(ssid2, password2, 10000)) {
+          break;
+        }
+      }
+    }
+  }
+
   Serial.println("WiFi connected");
+  Serial.print("Connected SSID: ");
+  Serial.println(WiFi.SSID());
   Serial.print("IP address: ");
   Serial.println(WiFi.localIP());
 }

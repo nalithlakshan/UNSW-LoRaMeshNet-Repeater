@@ -45,6 +45,7 @@ extern PacketIDFifo_t repeatedPl1PktIDs;
 extern NetworkGraph_t NetworkGraph;
 
 void PositionLearningInit(void);
+void PositionLearningReset(void);
 void PositionLearningInitialBroadcast(void);
 void PL2InitialTransmission(void);
 void PL3RouteMapping(void);

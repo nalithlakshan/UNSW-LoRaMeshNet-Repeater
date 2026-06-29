@@ -22,27 +22,45 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define TRANSMITTER_PERIOD_MS        5000
+#define TRANSMITTER_PERIOD_MS        30000
+#define WOR_REPLY_WAIT_TIMEOUT_MS    5000U
 #define MAX_PACKET_SIZE              256
 #define TRANSMITTER_UART_BUFFER_SIZE 512
 #define DEBUG_TX                     1
 
 #define TX_TIMEOUT_VALUE             3000
 #define TX_BACKOFF_MIN_MS            10U
-#define TX_BACKOFF_MAX_MS            50U
+#define TX_BACKOFF_MAX_MS            500U
 
 TransmitBuffer_t Transmit_Buffer = {0};
 bool txLoopRunning = false;
+volatile bool edTxCycleActive = false;
 
+typedef enum
+{
+    ED_TX_STATE_IDLE = 0,
+    ED_TX_STATE_TX_WOR,
+    ED_TX_STATE_WAIT_WOR_REPLY,
+    ED_TX_STATE_REPLY_TIMEOUT,
+    ED_TX_STATE_TX_DATA
+} EdTxState_t;
 
 static UTIL_TIMER_Object_t TxTimer;
-static LoRaPacket_t TxPacket;
+static UTIL_TIMER_Object_t WorReplyTimer;
 static uint8_t EncodedTxPkt[MAX_PACKET_SIZE];
 static uint16_t EncodedTxPktSize = 0;
-static uint8_t TxCounter = 0;
+static EdTxState_t EdTxState = ED_TX_STATE_IDLE;
+static uint8_t SelectedUpstreamNodeType = PACKET_NODE_TYPE_REPEATER;
+static bool UnknownUpstreamRetryUsed = false;
 
 static void TxTimerCb(void *context);
+static void WorReplyTimerCb(void *context);
 static void TxTask(void);
+static bool SubmitWorPacket(void);
+static bool SubmitDataPacket(void);
+static void StartWorAckRx(void);
+static void HandleWorReplyTimeout(void);
+static void FinishEdCycle(void);
 
 bool Transmitter_Submit(const LoRaPacket_t *packet)
 {
@@ -134,7 +152,7 @@ void Transmitter_TxLoop(void)
                     cadWaitMs++;
                 }
 
-                channelFree = !cadActivityDetected;
+                channelFree = (!cadActivityDetected && cadResultReady);
                 if(!channelFree && DEBUG_TX){
                     APP_LOG(TS_OFF, VLEVEL_M, "Channel is Busy!\r\n");
                 }       
@@ -158,28 +176,10 @@ void Transmitter_Init(void)
 
 void Transmitter_StartPeriodicED(void)
 {
-    const char payload[] = "Hello World!";
-
     UTIL_SEQ_RegTask((1U << CFG_SEQ_Task_LoRaTx), 0, TxTask);
 
-    TxPacket.txNodeID = nodeID;
-    TxPacket.txNodeType = PACKET_NODE_TYPE_END_DEVICE;
-    TxPacket.txDistanceValue = distanceValue;
-    TxPacket.txBatteryPercentage = (uint8_t)batteryPercentage;
-    TxPacket.rxNodeID = nextUptreamNodeID;
-    TxPacket.rxNodeType = PACKET_NODE_TYPE_REPEATER;
-    TxPacket.rxDistanceValue = 0;
-    TxPacket.ackNodeID = 0;
-    TxPacket.nearestGwID = nearestGatewayID;
-    TxPacket.packetType = PACKET_TYPE_WOR;
-    TxPacket.direction = PACKET_DIRECTION_BROADCAST;
-    TxPacket.preambleSize = LORA_PREAMBLE_LENGTH;
-    TxPacket.payloadSize = (uint16_t)strlen(payload);
-    memcpy(TxPacket.payload, payload, TxPacket.payloadSize);
-
-    EncodedTxPktSize = Packet_Encode(&TxPacket, EncodedTxPkt, sizeof(EncodedTxPkt));
-
     UTIL_TIMER_Create(&TxTimer, TRANSMITTER_PERIOD_MS, UTIL_TIMER_PERIODIC, TxTimerCb, NULL);
+    UTIL_TIMER_Create(&WorReplyTimer, WOR_REPLY_WAIT_TIMEOUT_MS, UTIL_TIMER_ONESHOT, WorReplyTimerCb, NULL);
     UTIL_TIMER_Start(&TxTimer);
 }
 
@@ -189,7 +189,21 @@ void Transmitter_OnTxDone(void)
     {
         APP_LOG(TS_OFF, VLEVEL_M, "TX done\r\n");
     }
-    Radio.SetChannel(RF_FREQUENCY);
+
+    if (EdTxState == ED_TX_STATE_TX_WOR)
+    {
+        EdTxState = ED_TX_STATE_WAIT_WOR_REPLY;
+        UTIL_TIMER_StartWithPeriod(&WorReplyTimer, WOR_REPLY_WAIT_TIMEOUT_MS);
+        StartWorAckRx();
+        return;
+    }
+
+    if (EdTxState == ED_TX_STATE_TX_DATA)
+    {
+        FinishEdCycle();
+        return;
+    }
+
     Radio.Sleep();
 }
 
@@ -199,41 +213,256 @@ void Transmitter_OnTxTimeout(void)
     {
         APP_LOG(TS_OFF, VLEVEL_M, "TX timeout\r\n");
     }
+
+    if (EdTxState == ED_TX_STATE_TX_WOR)
+    {
+        EdTxState = ED_TX_STATE_REPLY_TIMEOUT;
+        UTIL_SEQ_SetTask((1U << CFG_SEQ_Task_LoRaTx), CFG_SEQ_Prio_0);
+        return;
+    }
+
+    FinishEdCycle();
 }
 
+void Transmitter_OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr)
+{
+    LoRaPacket_t packet;
+
+    (void)rssi;
+    (void)snr;
+
+    if (EdTxState != ED_TX_STATE_WAIT_WOR_REPLY)
+    {
+        Radio.Sleep();
+        return;
+    }
+
+    if ((payload == NULL) || (size < LORA_PACKET_HEADER_SIZE))
+    {
+        StartWorAckRx();
+        return;
+    }
+
+    packet = Packet_Decode(payload);
+    if ((packet.packetType == PACKET_TYPE_WOR) &&
+        (packet.direction == PACKET_DIRECTION_UPSTREAM) &&
+        ((packet.txNodeType == PACKET_NODE_TYPE_REPEATER) ||
+         (packet.txNodeType == PACKET_NODE_TYPE_GATEWAY)))
+    {
+        UTIL_TIMER_Stop(&WorReplyTimer);
+        Radio.Sleep();
+        nextUptreamNodeID = packet.txNodeID;
+        SelectedUpstreamNodeType = packet.txNodeType;
+        APP_LOG(TS_OFF, VLEVEL_M, "WOR reply received from node %u\r\n", nextUptreamNodeID);
+
+        if (!SubmitDataPacket())
+        {
+            APP_LOG(TS_OFF, VLEVEL_M, "DATA submit skipped, transmit buffer full\r\n");
+            FinishEdCycle();
+        }
+        return;
+    }
+
+    StartWorAckRx();
+}
+
+void Transmitter_OnRxTimeout(void)
+{
+    if (DEBUG_TX)
+    {
+        APP_LOG(TS_OFF, VLEVEL_M, "RX timeout\r\n");
+    }
+
+    HandleWorReplyTimeout();
+}
+
+void Transmitter_OnRxError(void)
+{
+    if (DEBUG_TX)
+    {
+        APP_LOG(TS_OFF, VLEVEL_M, "RX Error\r\n");
+    }
+
+    if (EdTxState == ED_TX_STATE_WAIT_WOR_REPLY)
+    {
+        StartWorAckRx();
+        return;
+    }
+
+    FinishEdCycle();
+}
 
 
 static void TxTimerCb(void *context)
 {
     (void)context;
-    if (DEBUG_TX)
+    if ((DEBUG_TX) && (EdTxState == ED_TX_STATE_IDLE))
     {
         APP_LOG(TS_OFF, VLEVEL_M, "TxTimer Expired\r\n");
     }
-    UTIL_SEQ_SetTask((1U << CFG_SEQ_Task_LoRaTx), CFG_SEQ_Prio_0);
+    if (EdTxState == ED_TX_STATE_IDLE)
+    {
+        UTIL_SEQ_SetTask((1U << CFG_SEQ_Task_LoRaTx), CFG_SEQ_Prio_0);
+    }
+}
+
+static void WorReplyTimerCb(void *context)
+{
+    (void)context;
+
+    HandleWorReplyTimeout();
 }
 
 static void TxTask(void)
 {
-    TxCounter = TxCounter + 1U;
-    if (DEBUG_TX)
+    if (EdTxState == ED_TX_STATE_REPLY_TIMEOUT)
     {
-        APP_LOG(TS_OFF, VLEVEL_M, "TX counter = %u\r\n", TxCounter);
-    }
-    uint8_t UartMsg[TRANSMITTER_UART_BUFFER_SIZE] = {0};
-    const char *packetString;
+        Radio.Sleep();
 
-    // WOR Transmission
-    TxPacket.packetID = (uint16_t)(((uint16_t)nodeID << 8) | TxCounter);
-    if (Transmitter_Submit(&TxPacket))
-    {
-        packetString = Packet_To_String(&TxPacket);
-        int UartMsgSize = snprintf((char *)UartMsg, sizeof(UartMsg),
-                                   "Node %d: Submitted Packet %s\r\n", nodeID, packetString);
-        HAL_UART_Transmit(&huart2, UartMsg, (uint16_t)UartMsgSize, HAL_MAX_DELAY);
+        if ((nextUptreamNodeID > 0U) && (!UnknownUpstreamRetryUsed))
+        {
+            UnknownUpstreamRetryUsed = true;
+            nextUptreamNodeID = 0U;
+            APP_LOG(TS_OFF, VLEVEL_M, "No WOR reply, retrying with unknown upstream node\r\n");
+            if (!SubmitWorPacket())
+            {
+                APP_LOG(TS_OFF, VLEVEL_M, "WOR retry skipped, transmit buffer full\r\n");
+                FinishEdCycle();
+            }
+        }
+        else
+        {
+            dataPktCounter++;
+            APP_LOG(TS_OFF, VLEVEL_M, "No WOR reply, DATA %u discarded\r\n", dataPktCounter);
+            FinishEdCycle();
+        }
+
+        return;
     }
-    else if (DEBUG_TX)
+
+    if (EdTxState != ED_TX_STATE_IDLE)
     {
-        APP_LOG(TS_OFF, VLEVEL_M, "TX skipped, transmit buffer full\r\n");
+        return;
     }
+
+    edTxCycleActive = true;
+    UnknownUpstreamRetryUsed = false;
+    if (!SubmitWorPacket())
+    {
+        APP_LOG(TS_OFF, VLEVEL_M, "WOR submit skipped, transmit buffer full\r\n");
+        FinishEdCycle();
+    }
+}
+
+static bool SubmitWorPacket(void)
+{
+    LoRaPacket_t packet = {0};
+    uint8_t nextSequenceNumber = (uint8_t)(sequenceNumber + 1U);
+
+    packet.txNodeID = nodeID;
+    packet.txNodeType = PACKET_NODE_TYPE_END_DEVICE;
+    packet.txDistanceValue = distanceValue;
+    packet.txBatteryPercentage = (uint8_t)batteryPercentage;
+    packet.rxNodeID = nextUptreamNodeID;
+    packet.rxNodeType = PACKET_NODE_TYPE_REPEATER;
+    packet.rxDistanceValue = 0U;
+    packet.ackNodeID = 0U;
+    packet.nearestGwID = 0U;
+    packet.packetID = (uint16_t)(((uint16_t)nodeID << 8) | nextSequenceNumber);
+    packet.packetType = PACKET_TYPE_WOR;
+    packet.direction = PACKET_DIRECTION_UPSTREAM;
+    packet.positionLearningMode = 0U;
+    packet.preambleSize = LORA_PREAMBLE_LENGTH;
+    packet.payloadSize = 0U;
+
+    EdTxState = ED_TX_STATE_TX_WOR;
+
+    if (Transmitter_Submit(&packet))
+    {
+        sequenceNumber = nextSequenceNumber;
+        APP_LOG(TS_OFF, VLEVEL_M, "Submitted ED WOR: %s\r\n", Packet_To_String(&packet));
+        return true;
+    }
+
+    EdTxState = ED_TX_STATE_IDLE;
+    return false;
+}
+
+static bool SubmitDataPacket(void)
+{
+    LoRaPacket_t packet = {0};
+    uint8_t nextSequenceNumber = (uint8_t)(sequenceNumber + 1U);
+    uint16_t nextDataPktCounter = (uint16_t)(dataPktCounter + 1U);
+    int payloadSize;
+
+    payloadSize = snprintf((char *)packet.payload,
+                           sizeof(packet.payload),
+                           "DATA from ED %u, number=%u",
+                           nodeID,
+                           nextDataPktCounter);
+    if (payloadSize < 0)
+    {
+        payloadSize = 0;
+    }
+    if (payloadSize > LORA_PACKET_MAX_PAYLOAD_SIZE)
+    {
+        payloadSize = LORA_PACKET_MAX_PAYLOAD_SIZE;
+    }
+
+    packet.txNodeID = nodeID;
+    packet.txNodeType = PACKET_NODE_TYPE_END_DEVICE;
+    packet.txDistanceValue = distanceValue;
+    packet.txBatteryPercentage = (uint8_t)batteryPercentage;
+    packet.rxNodeID = nextUptreamNodeID;
+    packet.rxNodeType = SelectedUpstreamNodeType;
+    packet.rxDistanceValue = 0U;
+    packet.ackNodeID = 0U;
+    packet.nearestGwID = 0U;
+    packet.packetID = (uint16_t)(((uint16_t)nodeID << 8) | nextSequenceNumber);
+    packet.packetType = PACKET_TYPE_DATA;
+    packet.direction = PACKET_DIRECTION_UPSTREAM;
+    packet.positionLearningMode = 0U;
+    packet.preambleSize = LORA_PREAMBLE_LENGTH;
+    packet.payloadSize = (uint16_t)payloadSize;
+
+    EdTxState = ED_TX_STATE_TX_DATA;
+
+    if (Transmitter_Submit(&packet))
+    {
+        sequenceNumber = nextSequenceNumber;
+        dataPktCounter = nextDataPktCounter;
+        APP_LOG(TS_OFF, VLEVEL_M, "Submitted ED DATA: %s\r\n", Packet_To_String(&packet));
+        return true;
+    }
+
+    EdTxState = ED_TX_STATE_IDLE;
+    return false;
+}
+
+static void StartWorAckRx(void)
+{
+    if (EdTxState == ED_TX_STATE_WAIT_WOR_REPLY)
+    {
+        Radio.SetChannel(RF_FREQUENCY_WOR);
+        Radio.Rx(WOR_REPLY_WAIT_TIMEOUT_MS);
+    }
+}
+
+static void HandleWorReplyTimeout(void)
+{
+    if (EdTxState == ED_TX_STATE_WAIT_WOR_REPLY)
+    {
+        UTIL_TIMER_Stop(&WorReplyTimer);
+        EdTxState = ED_TX_STATE_REPLY_TIMEOUT;
+        UTIL_SEQ_SetTask((1U << CFG_SEQ_Task_LoRaTx), CFG_SEQ_Prio_0);
+    }
+}
+
+static void FinishEdCycle(void)
+{
+    UTIL_TIMER_Stop(&WorReplyTimer);
+    EdTxState = ED_TX_STATE_IDLE;
+    UnknownUpstreamRetryUsed = false;
+    edTxCycleActive = false;
+    Radio.Sleep();
 }

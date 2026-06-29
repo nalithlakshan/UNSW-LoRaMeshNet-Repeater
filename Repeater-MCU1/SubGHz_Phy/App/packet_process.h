@@ -19,10 +19,12 @@ extern "C" {
 
 #define MAX_PACKET_FIFO_SIZE 10U
 
-#define STANDBY_TIMER_MIN_MS 500U
-#define STANDBY_TIMER_MAX_MS 3000U
-#define WOR_ACK_TO_ED_TIMER_MIN_MS 500U
-#define WOR_ACK_TO_ED_TIMER_MAX_MS 3000U
+#define STANDBY_TIMER_MIN_MS 4000U
+#define STANDBY_TIMER_MAX_MS 6000U
+#define WOR_ACK_TO_ED_TIMER_MIN_MS 100U
+#define WOR_ACK_TO_ED_TIMER_MAX_MS 2000U
+
+#define REJECT_UPSTREAM_ALREADY_FORWARDED_PKTS 1U
 
 typedef struct
 {
@@ -43,6 +45,7 @@ typedef struct
 extern PacketIDFifo_t processedPktBuf;
 extern PacketIDFifo_t lowerDistanceDuplicatePktBuf;
 extern PacketIDFifo_t higherDistanceDuplicatePktBuf;
+extern PacketIDFifo_t upstreamAlreadyForwardedPktBuf;
 extern PacketIDFifo_t pendingWorAckNodes;
 extern PacketFifo_t rxBuffer;
 extern PacketFifo_t standbyBuffer;
@@ -59,6 +62,7 @@ bool PacketFifo_Pop(PacketFifo_t *fifo, LoRaPacket_t *packet);
 void PacketProcess_Init(void);
 void PacketProcess_Schedule(void);
 bool PacketProcess_IsBusy(void);
+void PacketProcess_ReleaseAwaitingWorData(void);
 void PacketProcess_ReconfigureAndSubmit(LoRaPacket_t *packet);
 
 #ifdef __cplusplus

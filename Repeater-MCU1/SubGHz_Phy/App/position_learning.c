@@ -22,11 +22,13 @@
 #include "main.h"
 
 #include <math.h>
+#include <stdio.h>
+#include <string.h>
 
 #define MAX_INITIAL_PL_PACKETS 1U
-#define INITIAL_PL_BROADCAST_INTERVAL_MS 10000U
-#define PL2_START_TIMEOUT_MS 35000U
-#define PL3_START_TIMEOUT_MS 35000U
+#define INITIAL_PL_BROADCAST_INTERVAL_MS 3000U
+#define PL2_START_TIMEOUT_MS (10000U + nodeID*5000U)
+#define PL3_START_TIMEOUT_MS 15000U
 #define NETWORK_GRAPH_DISTANCE_INF 0xFFFFFFFFUL
 #define DEBUG_PL 1
 
@@ -63,6 +65,7 @@ NetworkGraph_t NetworkGraph = {0};
   */
 
 static uint8_t initialPktCount = 0;
+static bool positionLearningActive = false;
 
 static UTIL_TIMER_Object_t InitialPlTimer;
 static UTIL_TIMER_Object_t PL2StartTimer;
@@ -79,6 +82,7 @@ static void NetworkGraph_AddLocalNeighbours(void);
 static void NetworkGraph_AddPL2Packet(const LoRaPacket_t *packet);
 static void NetworkGraph_CalculateShortestPaths(uint8_t sourceIndex, uint32_t distances[NETWORK_GRAPH_MAX_NODES]);
 static void NetworkGraph_UpdateLocalRoutingInfo(void);
+static void PositionLearning_FormatNeighbourIDs(char *buffer, uint16_t bufferSize);
 
 void PositionLearningInit(void)
 {
@@ -103,9 +107,32 @@ void PositionLearningInit(void)
   UTIL_SEQ_RegTask((1U << CFG_SEQ_Task_PL3RouteMapping), 0, PL3RouteMapping);
 }
 
+void PositionLearningReset(void)
+{
+  memset(Neighbours, 0, sizeof(Neighbours));
+  NeighbourCount = 0U;
+
+  memset(&NetworkGraph, 0, sizeof(NetworkGraph));
+
+  distanceValue = 0U;
+  nearestGatewayID = 0U;
+  nextUptreamNodeID = 0U;
+  nextDownstreamNodeID = 0U;
+
+  // initialPktCount = 0U;
+  // PacketIDFifo_Clear(&repeatedPl1PktIDs);
+  // PacketIDFifo_Clear(&processedPktBuf);
+  // PacketIDFifo_Clear(&lowerDistanceDuplicatePktBuf);
+  // PacketIDFifo_Clear(&higherDistanceDuplicatePktBuf);
+  // PacketIDFifo_Clear(&upstreamAlreadyForwardedPktBuf);
+  // PacketIDFifo_Clear(&pendingWorAckNodes);
+}
+
 void PositionLearningInitialBroadcast(void)
 {
+  positionLearningActive = true;
   HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_SET); //To indicate PL running
+  UTIL_TIMER_StartWithPeriod(&PL2StartTimer, PL2_START_TIMEOUT_MS);
 
   if (initialPktCount < MAX_INITIAL_PL_PACKETS)
   {
@@ -131,6 +158,12 @@ void ReceivedPktHanderPL1(LoRaPacket_t *packet)
   double d0 = 5.0; //reference distance (40.0)
   double pl0 = 55; //path loss at d0  (127.41)
   double gamma = 2.08;
+
+  if (!positionLearningActive)
+  {
+    PositionLearningReset();
+    positionLearningActive = true;
+  }
 
   HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_SET); //To indicate PL running
 
@@ -222,6 +255,7 @@ void PL2InitialTransmission(void)
   uint8_t i;
 
   APP_LOG(TS_OFF, VLEVEL_M, "\nPL2 Started!\r\n");
+  UTIL_TIMER_StartWithPeriod(&PL3StartTimer, PL3_START_TIMEOUT_MS);
 
   maxNeighbourCount = (uint8_t)((LORA_PACKET_MAX_PAYLOAD_SIZE - 4)/4);
   pl2NeighbourCount = (NeighbourCount > maxNeighbourCount) ? maxNeighbourCount : NeighbourCount;
@@ -347,21 +381,72 @@ void PL3RouteMapping(void)
 
   NetworkGraph_UpdateLocalRoutingInfo();
 
+  positionLearningActive = false;
   HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_RESET);
 
   if (DEBUG_PL)
   {
+    char neighbourIDs[160];
+    PositionLearning_FormatNeighbourIDs(neighbourIDs, sizeof(neighbourIDs));
+
     MQTT_LOG(TS_OFF, VLEVEL_M,
-         "PL_DONE| Node %u GW=%u DV=%u UP=%u DOWN=%u graphNodes=%u\r\n",
+         "PL_DONE| Node %u GW=%u DV=%u UP=%u DOWN=%u graphNodes=%u neighbours: %s\r\n",
          nodeID, nearestGatewayID, distanceValue,
          nextUptreamNodeID, nextDownstreamNodeID,
-         NetworkGraph.nodeCount);
+         NetworkGraph.nodeCount, neighbourIDs);
 
     APP_LOG(TS_OFF, VLEVEL_M,
-         "PL_DONE| Node %u GW=%u DV=%u UP=%u DOWN=%u graphNodes=%u\r\n",
+         "PL_DONE| Node %u GW=%u DV=%u UP=%u DOWN=%u graphNodes=%u neighbours: %s\r\n",
          nodeID, nearestGatewayID, distanceValue,
          nextUptreamNodeID, nextDownstreamNodeID,
-         NetworkGraph.nodeCount);
+         NetworkGraph.nodeCount, neighbourIDs);
+  }
+}
+
+static void PositionLearning_FormatNeighbourIDs(char *buffer, uint16_t bufferSize)
+{
+  uint8_t i;
+  uint16_t used = 0U;
+
+  if ((buffer == NULL) || (bufferSize == 0U))
+  {
+    return;
+  }
+
+  buffer[0] = '\0';
+
+  if (NeighbourCount == 0U)
+  {
+    (void)snprintf(buffer, bufferSize, "none");
+    return;
+  }
+
+  for (i = 0U; i < NeighbourCount; i++)
+  {
+    int written;
+
+    if (used >= bufferSize)
+    {
+      break;
+    }
+
+    written = snprintf(&buffer[used],
+                       (uint16_t)(bufferSize - used),
+                       "%s%u",
+                       (i == 0U) ? "" : ",",
+                       Neighbours[i].ID);
+    if (written < 0)
+    {
+      break;
+    }
+
+    if ((uint16_t)written >= (uint16_t)(bufferSize - used))
+    {
+      used = (uint16_t)(bufferSize - 1U);
+      break;
+    }
+
+    used = (uint16_t)(used + (uint16_t)written);
   }
 }
 

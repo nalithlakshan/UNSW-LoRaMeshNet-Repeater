@@ -82,6 +82,8 @@ extern uint8_t nodeID;
 extern char nodeType;
 extern double batteryPercentage;
 extern uint16_t distanceValue;
+extern uint8_t sequenceNumber;
+extern uint16_t dataPktCounter;
 
 //Power Management Flags
 extern volatile bool activeMode;

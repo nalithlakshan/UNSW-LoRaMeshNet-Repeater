@@ -33,10 +33,12 @@
 /* USER CODE BEGIN EV */
 
 // Device Info
-uint8_t nodeID = 50;
+uint8_t nodeID = 22;
 char nodeType = 'E';  // 'R' for Repeater, 'E' for End Device, 'G' for Gateway
 double batteryPercentage = 100.0;
-uint16_t distanceValue = 0; // Distance value to nearest gateway, to be updated by routing init
+uint16_t distanceValue = 0xFFFFU;
+uint8_t sequenceNumber = 0;
+uint16_t dataPktCounter = 0;
 
 //Power Management Flags
 volatile bool activeMode = false;
@@ -140,6 +142,7 @@ void SubghzApp_Init(void)
   RadioEvents.TxTimeout = OnTxTimeout;
   RadioEvents.RxTimeout = OnRxTimeout;
   RadioEvents.RxError = OnRxError;
+  RadioEvents.CadDone = CAD_Mode_OnCadDone;
 
   Radio.Init(&RadioEvents);
 
@@ -155,7 +158,7 @@ void SubghzApp_Init(void)
   Radio.SetRxConfig(MODEM_LORA, LORA_BANDWIDTH, LORA_SPREADING_FACTOR,
                     LORA_CODINGRATE, 0, LORA_PREAMBLE_LENGTH,
                     LORA_SYMBOL_TIMEOUT, LORA_FIX_LENGTH_PAYLOAD_ON, 0,
-                    true, 0, 0, LORA_IQ_INVERSION_ON, false);
+                    true, 0, 0, LORA_IQ_INVERSION_ON, true);
   CAD_Mode_ConfigRadio();
   Radio.SetMaxPayloadLength(MODEM_LORA, MAX_APP_BUFFER_SIZE);
   Radio.Sleep();
@@ -190,40 +193,35 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 static void OnTxDone(void)
 {
   /* USER CODE BEGIN OnTxDone */
-  APP_LOG(TS_OFF, VLEVEL_M, "TX done\r\n");
-  Radio.Sleep();
+  Transmitter_OnTxDone();
   /* USER CODE END OnTxDone */
 }
 
 static void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t LoraSnr_FskCfo)
 {
   /* USER CODE BEGIN OnRxDone */
-  APP_LOG(TS_OFF, VLEVEL_M, "RX done\r\n");
-  Radio.Sleep();
+  Transmitter_OnRxDone(payload, size, rssi, LoraSnr_FskCfo);
   /* USER CODE END OnRxDone */
 }
 
 static void OnTxTimeout(void)
 {
   /* USER CODE BEGIN OnTxTimeout */
-  APP_LOG(TS_OFF, VLEVEL_M, "TX timeout\r\n");
-  Radio.Sleep();
+  Transmitter_OnTxTimeout();
   /* USER CODE END OnTxTimeout */
 }
 
 static void OnRxTimeout(void)
 {
   /* USER CODE BEGIN OnRxTimeout */
-  APP_LOG(TS_OFF, VLEVEL_M, "RX timeout\r\n");
-  Radio.Sleep();
+  Transmitter_OnRxTimeout();
   /* USER CODE END OnRxTimeout */
 }
 
 static void OnRxError(void)
 {
   /* USER CODE BEGIN OnRxError */
-  APP_LOG(TS_OFF, VLEVEL_M, "RX Error\r\n");
-  Radio.Sleep();
+  Transmitter_OnRxError();
   /* USER CODE END OnRxError */
 }
 

@@ -86,10 +86,6 @@ extern double batteryPercentage;
 extern uint16_t distanceValue;
 extern uint8_t sequenceNumber;
 
-//Power Management Flags
-extern volatile bool awaitingWorAck;
-extern volatile bool awaitingTransmissionEndFlag;
-extern volatile bool inStandbyMode;
 extern const uint32_t MCU1_IDLE_SLEEP_DELAY_MS;
 
 // Routing Info

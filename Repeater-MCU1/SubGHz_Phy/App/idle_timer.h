@@ -16,6 +16,7 @@ extern "C" {
 
 void IdleTimer_Init(void);
 void IdleTimer_Reset(void);
+void IdleTimer_RestartIfRunning(void);
 bool IdleTimer_ShouldEnterLowPower(void);
 
 #ifdef __cplusplus

@@ -10,6 +10,7 @@
 #include "position_learning.h"
 #include "subghz_phy_app.h"
 #include "transmitter.h"
+#include "wor_ack_wait.h"
 
 #include "stm32_seq.h"
 #include "stm32_timer.h"
@@ -22,9 +23,11 @@
 PacketIDFifo_t processedPktBuf = {0};
 PacketIDFifo_t lowerDistanceDuplicatePktBuf = {0};
 PacketIDFifo_t higherDistanceDuplicatePktBuf = {0};
+PacketIDFifo_t upstreamAlreadyForwardedPktBuf = {0};
 PacketIDFifo_t pendingWorAckNodes = {0};
 PacketFifo_t rxBuffer = {0};
 PacketFifo_t standbyBuffer = {0};
+static PacketFifo_t awaitingWorDataBuffer = {0};
 static volatile bool packetProcessRunning = false;
 
 static void PacketProcess(void);
@@ -32,6 +35,7 @@ static void PacketProcess_StandbyTimerCb(void *context);
 static bool PacketProcess_StartStandbyTimer(void);
 static void PacketProcess_WorAckToEdTimerCb(void *context);
 static bool PacketProcess_StartWorAckToEdTimer(const LoRaPacket_t *packet);
+static uint16_t PacketProcess_GetNodeDistanceValue(uint8_t targetNodeID);
 
 static UTIL_TIMER_Object_t StandbyTimers[MAX_PACKET_FIFO_SIZE];
 static UTIL_TIMER_Object_t WorAckToEdTimers[MAX_PACKET_FIFO_SIZE];
@@ -227,7 +231,20 @@ void PacketProcess_Schedule(void)
 
 bool PacketProcess_IsBusy(void)
 {
-  return (packetProcessRunning || (rxBuffer.count > 0U) || (standbyBuffer.count > 0U));
+  return (packetProcessRunning ||
+          (rxBuffer.count > 0U) ||
+          (standbyBuffer.count > 0U) ||
+          (awaitingWorDataBuffer.count > 0U));
+}
+
+void PacketProcess_ReleaseAwaitingWorData(void)
+{
+  LoRaPacket_t packet = {0};
+
+  while (PacketFifo_Pop(&awaitingWorDataBuffer, &packet))
+  {
+    PacketProcess_ReconfigureAndSubmit(&packet);
+  }
 }
 
 /* PACKET PROCESSING FUNCTION
@@ -282,9 +299,25 @@ static void PacketProcess(void)
       continue;
     }
 
+#if (REJECT_UPSTREAM_ALREADY_FORWARDED_PKTS == 1U)
+    if ((packet.direction == PACKET_DIRECTION_UPSTREAM) &&
+        (packet.rxNodeID == nodeID) &&
+        PacketIDFifo_Search(&upstreamAlreadyForwardedPktBuf, packet.packetID))
+    {
+      APP_LOG(TS_OFF, VLEVEL_M, "Upstream packet skipped, already heard forwarded ahead: %u\r\n", packet.packetID);
+      continue;
+    }
+#endif
+
     // Packet addressed to this repeater OR Broadcast packet:
     if ((packet.rxNodeID == nodeID) || (packet.direction == PACKET_DIRECTION_BROADCAST))
     {
+      if ((nodeType == 'G') && (packet.packetType == PACKET_TYPE_DATA))
+      {
+        APP_LOG(TS_OFF, VLEVEL_M, "GW %u received: %.*s\r\n", nodeID, (int)packet.payloadSize, packet.payload);
+        MQTT_LOG(TS_OFF, VLEVEL_M, "GW %u received: %.*s\r\n", nodeID, (int)packet.payloadSize, packet.payload);
+      }
+
       PacketProcess_ReconfigureAndSubmit(&packet);
 
       continue;
@@ -443,6 +476,18 @@ void PacketProcess_ReconfigureAndSubmit(LoRaPacket_t *packet)
     return;
   }
 
+  if ((packet->packetType == PACKET_TYPE_DATA) && awaitingWorAck)
+  {
+    PacketFifo_Push(&awaitingWorDataBuffer, packet);
+    APP_LOG(TS_OFF, VLEVEL_M, "DATA retransmission held until WOR ACK wait clears: %u\r\n", packet->packetID);
+    return;
+  }
+
+  if (packet->packetType == PACKET_TYPE_WOR)
+  {
+    packet->ackNodeID = packet->txNodeID;
+  }
+
   packet->txNodeID = nodeID;
   packet->txNodeType = (nodeType == 'E') ? PACKET_NODE_TYPE_END_DEVICE :
                        (nodeType == 'R') ? PACKET_NODE_TYPE_REPEATER :
@@ -453,7 +498,7 @@ void PacketProcess_ReconfigureAndSubmit(LoRaPacket_t *packet)
                      (packet->direction == PACKET_DIRECTION_UPSTREAM) ? nextUptreamNodeID : 0U;
   packet->rxNodeType = ((packet->direction == PACKET_DIRECTION_UPSTREAM) && (packet->rxNodeID != 0) &&
                         (packet->rxNodeID == nearestGatewayID)) ? PACKET_NODE_TYPE_GATEWAY : PACKET_NODE_TYPE_REPEATER;
-  packet->rxDistanceValue = 0U; //Edit this later !!!!!!!!!!
+  packet->rxDistanceValue = PacketProcess_GetNodeDistanceValue(packet->rxNodeID);
   packet->nearestGwID = nearestGatewayID;
 
   if (Transmitter_Submit(packet))
@@ -464,4 +509,24 @@ void PacketProcess_ReconfigureAndSubmit(LoRaPacket_t *packet)
   {
     APP_LOG(TS_OFF, VLEVEL_M, "Retransmission skipped, transmit buffer full\r\n");
   }
+}
+
+static uint16_t PacketProcess_GetNodeDistanceValue(uint8_t targetNodeID)
+{
+  uint8_t i;
+
+  if ((targetNodeID == 0U) || (targetNodeID == nodeID))
+  {
+    return distanceValue;
+  }
+
+  for (i = 0U; i < NeighbourCount; i++)
+  {
+    if (Neighbours[i].ID == targetNodeID)
+    {
+      return Neighbours[i].DistanceValue;
+    }
+  }
+
+  return 0U;
 }

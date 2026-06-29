@@ -32,6 +32,7 @@
 /* USER CODE BEGIN Includes */
 #include "idle_timer.h"
 #include "usart.h"
+#include "wor_ack_wait.h"
 
 /* USER CODE END Includes */
 
@@ -132,6 +133,8 @@ void UTIL_SEQ_Idle(void)
   {
     return;
   }
+
+  firstWorAfterWaking = true;
 
   /* USER CODE END UTIL_SEQ_Idle_1 */
   UTIL_LPM_EnterLowPower();

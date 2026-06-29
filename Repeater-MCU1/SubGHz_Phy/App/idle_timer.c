@@ -12,10 +12,19 @@
 #include "stm32_timer.h"
 #include "subghz_phy_app.h"
 #include "transmitter.h"
+#include "wor_ack_wait.h"
 
 #include <stdint.h>
 
 static UTIL_TIMER_Object_t Mcu1IdleTimer;
+
+void IdleTimer_RestartIfRunning(void)
+{
+  if (UTIL_TIMER_IsRunning(&Mcu1IdleTimer) != 0U)
+  {
+    UTIL_TIMER_StartWithPeriod(&Mcu1IdleTimer, MCU1_IDLE_SLEEP_DELAY_MS);
+  }
+}
 static volatile uint8_t Mcu1IdleTimerExpired = 0U;
 static volatile uint8_t Mcu1IdleTimerRunning = 0U;
 static volatile uint8_t Mcu1IdleTimerResetRequested = 0U;
@@ -93,6 +102,7 @@ static bool Mcu1HasPendingWork(void)
 {
   return (PacketProcess_IsBusy() ||
           Transmitter_IsBusy() ||
+          awaitingWorAck ||
           (HAL_GPIO_ReadPin(BTN_GPIO_EXTI9_GPIO_Port, BTN_GPIO_EXTI9_Pin) == GPIO_PIN_RESET) ||
           (HAL_GPIO_ReadPin(WAKE_INT_MCU4_GPIO_Port, WAKE_INT_MCU4_Pin) == GPIO_PIN_SET));
 }

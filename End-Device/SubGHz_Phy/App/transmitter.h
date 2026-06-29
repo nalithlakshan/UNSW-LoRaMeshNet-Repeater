@@ -28,6 +28,7 @@ typedef struct
 } TransmitBuffer_t;
 
 extern TransmitBuffer_t Transmit_Buffer;
+extern volatile bool edTxCycleActive;
 
 bool Transmitter_Submit(const LoRaPacket_t *packet);
 void Transmitter_TxLoop(void);
@@ -35,6 +36,9 @@ void Transmitter_Init(void);
 void Transmitter_StartPeriodicED(void);
 void Transmitter_OnTxDone(void);
 void Transmitter_OnTxTimeout(void);
+void Transmitter_OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr);
+void Transmitter_OnRxTimeout(void);
+void Transmitter_OnRxError(void);
 
 #ifdef __cplusplus
 }

@@ -26,10 +26,12 @@
 #include <stdio.h>
 
 #include "cad_mode.h"
+#include "idle_timer.h"
 #include "packet.h"
 #include "packet_process.h"
 #include "position_learning.h"
 #include "transmitter.h"
+#include "wor_ack_wait.h"
 /* USER CODE END Includes */
 
 /* External variables ---------------------------------------------------------*/
@@ -42,11 +44,8 @@ double batteryPercentage = 100.0;
 uint16_t distanceValue = 0; // Distance value to nearest gateway, to be updated by routing init
 uint8_t sequenceNumber = 0;
 
-//Power Management Flags
-volatile bool awaitingWorAck = false;
-volatile bool awaitingTransmissionEndFlag = false;
-volatile bool inStandbyMode = false;
-const uint32_t MCU1_IDLE_SLEEP_DELAY_MS = 2000U;
+// Power Management Settings
+const uint32_t MCU1_IDLE_SLEEP_DELAY_MS = 5000U;
 
 
 // Routing Info
@@ -153,6 +152,7 @@ void SubghzApp_Init(void)
   Transmitter_Init();
   PositionLearningInit();
   PacketProcess_Init();
+  WorAckWait_Init();
   UTIL_SEQ_RegTask((1U << CFG_SEQ_Task_BTN), 0, PushBtnTask);
   UTIL_SEQ_RegTask((1U << CFG_SEQ_Task_WakeIntMcu4), 0, WakeIntMcu4Task);
 
@@ -204,6 +204,9 @@ void HAL_I2C_SlaveRxCpltCallback(I2C_HandleTypeDef *hi2c)
         return;
       }
 
+      //handler of awaiting WOR-ACK before forwarding DATA packets
+      WorAckWait_HandleReceivedPacket(&receivedPacket);
+
       // If waiting to send a WOR-ACK to an ED and another repeater already did that. 
       if ((receivedPacket.packetType == PACKET_TYPE_WOR) &&(receivedPacket.ackNodeID != 0U) &&
           PacketIDFifo_Remove(&pendingWorAckNodes, receivedPacket.ackNodeID))
@@ -211,13 +214,26 @@ void HAL_I2C_SlaveRxCpltCallback(I2C_HandleTypeDef *hi2c)
         APP_LOG(TS_OFF, VLEVEL_M, "Removed pending WOR ACK node %u\r\n", receivedPacket.ackNodeID);
       }
 
-      // If not a broadcast packet and its nearestGwID doesn't match this repeater's nearestGwID, ignore the packet
-      if (receivedPacket.direction != PACKET_DIRECTION_BROADCAST && receivedPacket.nearestGwID != nearestGatewayID)
+      // If not a broadcast packet and not from an ED and its nearestGwID doesn't match this repeater's nearestGwID, ignore the packet
+      if ((receivedPacket.txNodeType != PACKET_NODE_TYPE_END_DEVICE) &&
+          (receivedPacket.direction != PACKET_DIRECTION_BROADCAST) &&
+          (receivedPacket.nearestGwID != nearestGatewayID))
       {
-        APP_LOG(TS_OFF, VLEVEL_M, "Packet not intended for this repeater, ignoring...\r\n");
+        APP_LOG(TS_OFF, VLEVEL_M, "Packet (nearest GW: %u) not intended for this device (nearest GW: %u)\r\n", receivedPacket.nearestGwID, nearestGatewayID);
         HAL_I2C_Slave_Receive_IT(&hi2c2, I2CRxBuffer, MAX_APP_BUFFER_SIZE);
         return;
       }
+
+#if (REJECT_UPSTREAM_ALREADY_FORWARDED_PKTS == 1U)
+      if ((receivedPacket.direction == PACKET_DIRECTION_UPSTREAM) &&
+          (receivedPacket.rxNodeID != 0U) &&
+          (receivedPacket.rxDistanceValue < distanceValue) &&
+          !PacketIDFifo_Search(&upstreamAlreadyForwardedPktBuf, receivedPacket.packetID))
+      {
+        PacketIDFifo_Push(&upstreamAlreadyForwardedPktBuf, receivedPacket.packetID);
+        APP_LOG(TS_OFF, VLEVEL_M, "Upstream packet already heard forwarded ahead: %u\r\n", receivedPacket.packetID);
+      }
+#endif
 
       /* RECORDING RECEIVED PACKET INFO
        * If packetID not in processedPktBuf, add it to processedPktBuf
@@ -226,10 +242,20 @@ void HAL_I2C_SlaveRxCpltCallback(I2C_HandleTypeDef *hi2c)
       **/
       if (!PacketIDFifo_Search(&processedPktBuf, receivedPacket.packetID))
       {
-        PacketIDFifo_Push(&processedPktBuf, receivedPacket.packetID);
+        if(!(((receivedPacket.direction == PACKET_DIRECTION_UPSTREAM) && 
+            (receivedPacket.rxNodeID != nodeID) && (receivedPacket.rxNodeID != 0U) &&
+            (receivedPacket.rxDistanceValue > distanceValue))
+            ||
+            ((receivedPacket.direction == PACKET_DIRECTION_DOWNSTREAM) && 
+            (receivedPacket.rxNodeID != nodeID) && (receivedPacket.rxNodeID != 0U) &&
+            (receivedPacket.rxDistanceValue < distanceValue))))
+            {
+              PacketIDFifo_Push(&processedPktBuf, receivedPacket.packetID);
+            }
+        // PacketIDFifo_Push(&processedPktBuf, receivedPacket.packetID);
         PacketFifo_Push(&rxBuffer, &receivedPacket);
         PacketProcess_Schedule();
-        APP_LOG(TS_OFF, VLEVEL_M, "New packet received, added to processed buffer\r\n");
+        APP_LOG(TS_OFF, VLEVEL_M, "New packet received!\r\n");
       }
       else
       { 
@@ -301,12 +327,15 @@ static void OnRxError(void)
 static void PushBtnTask(void)
 {
   APP_LOG(TS_OFF, VLEVEL_M, "Push Button Pressed\r\n");
+  PositionLearningReset();
   PositionLearningInitialBroadcast();
 }
 
 
 static void WakeIntMcu4Task(void)
 {
+  IdleTimer_RestartIfRunning();
+
   APP_LOG(TS_OFF, VLEVEL_M, "\nMCU4 Wake Int Pin Toggled\r\n");
   HAL_I2C_Slave_Receive_IT(&hi2c2, I2CRxBuffer, MAX_APP_BUFFER_SIZE);
 }
