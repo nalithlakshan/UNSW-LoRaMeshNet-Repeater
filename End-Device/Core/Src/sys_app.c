@@ -32,6 +32,7 @@
 /* USER CODE BEGIN Includes */
 #include "subghz_phy_app.h"
 #include "transmitter.h"
+#include "usart.h"
 
 /* USER CODE END Includes */
 
@@ -140,6 +141,31 @@ void UTIL_SEQ_Idle(void)
 }
 
 /* USER CODE BEGIN EF */
+void MQTT_Log(uint32_t TimeStampState, uint32_t VerboseLevel, const char *strFormat, ...)
+{
+  uint8_t buf[UTIL_ADV_TRACE_TMP_BUF_SIZE + MAX_TS_SIZE];
+  uint16_t bufSize = 0;
+  va_list vaArgs;
+
+  if ((VerboseLevel != VLEVEL_ALWAYS) && (VerboseLevel > UTIL_ADV_TRACE_GetVerboseLevel()))
+  {
+    return;
+  }
+
+  if (TimeStampState == TS_ON)
+  {
+    TimestampNow(buf, &bufSize);
+  }
+
+  va_start(vaArgs, strFormat);
+  bufSize += (uint16_t)UTIL_ADV_TRACE_VSNPRINTF((char *)&buf[bufSize],
+                                                (uint32_t)(sizeof(buf) - bufSize),
+                                                strFormat,
+                                                vaArgs);
+  va_end(vaArgs);
+
+  HAL_UART_Transmit(&huart2, buf, bufSize, HAL_MAX_DELAY);
+}
 
 /* USER CODE END EF */
 

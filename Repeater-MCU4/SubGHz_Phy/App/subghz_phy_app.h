@@ -44,7 +44,7 @@ extern "C" {
 #define RF_FREQUENCY                                915000000 /* Hz (WOR frequency) */
 
 #ifndef TX_OUTPUT_POWER   /* please, to change this value, redefine it in USER CODE SECTION */
-#define TX_OUTPUT_POWER                             14        /* dBm */
+#define TX_OUTPUT_POWER                             10        /* dBm */
 #endif /* TX_OUTPUT_POWER */
 
 #if (( USE_MODEM_LORA == 1 ) && ( USE_MODEM_FSK == 0 ))

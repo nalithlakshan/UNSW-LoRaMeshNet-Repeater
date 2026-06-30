@@ -19,6 +19,7 @@
 
 #include <stddef.h>
 #include <stdlib.h>
+#include <string.h>
 
 PacketIDFifo_t processedPktBuf = {0};
 PacketIDFifo_t lowerDistanceDuplicatePktBuf = {0};
@@ -304,7 +305,9 @@ static void PacketProcess(void)
         (packet.rxNodeID == nodeID) &&
         PacketIDFifo_Search(&upstreamAlreadyForwardedPktBuf, packet.packetID))
     {
-      APP_LOG(TS_OFF, VLEVEL_M, "Upstream packet skipped, already heard forwarded ahead: %u\r\n", packet.packetID);
+      APP_LOG(TS_OFF, VLEVEL_M, "Upstream packet skipped, already heard forwarded ahead: %u/%u\r\n",
+              (uint8_t)(packet.packetID >> 8),
+              (uint8_t)packet.packetID);
       continue;
     }
 #endif
@@ -314,8 +317,19 @@ static void PacketProcess(void)
     {
       if ((nodeType == 'G') && (packet.packetType == PACKET_TYPE_DATA))
       {
-        APP_LOG(TS_OFF, VLEVEL_M, "GW %u received: %.*s\r\n", nodeID, (int)packet.payloadSize, packet.payload);
-        MQTT_LOG(TS_OFF, VLEVEL_M, "GW %u received: %.*s\r\n", nodeID, (int)packet.payloadSize, packet.payload);
+        uint16_t payloadSize = packet.payloadSize;
+        char payloadText[LORA_PACKET_MAX_PAYLOAD_SIZE + 1U];
+
+        if (payloadSize > LORA_PACKET_MAX_PAYLOAD_SIZE)
+        {
+          payloadSize = LORA_PACKET_MAX_PAYLOAD_SIZE;
+        }
+
+        memcpy(payloadText, packet.payload, payloadSize);
+        payloadText[payloadSize] = '\0';
+
+        APP_LOG(TS_OFF, VLEVEL_M, "GW %u received: %s\r\n", nodeID, payloadText);
+        MQTT_LOG(TS_OFF, VLEVEL_M, "GW %u received: %s\r\n", nodeID, payloadText);
       }
 
       PacketProcess_ReconfigureAndSubmit(&packet);
@@ -399,14 +413,18 @@ static void PacketProcess_StandbyTimerCb(void *context)
   if ((packet.direction == PACKET_DIRECTION_UPSTREAM) &&
       PacketIDFifo_Search(&lowerDistanceDuplicatePktBuf, packet.packetID))
   {
-    APP_LOG(TS_OFF, VLEVEL_M, "Standby packet ignored, lower-distance duplicate seen: %u\r\n", packet.packetID);
+    APP_LOG(TS_OFF, VLEVEL_M, "Standby packet ignored, lower-distance duplicate seen: %u/%u\r\n",
+            (uint8_t)(packet.packetID >> 8),
+            (uint8_t)packet.packetID);
     return;
   }
 
   if ((packet.direction == PACKET_DIRECTION_DOWNSTREAM) &&
       PacketIDFifo_Search(&higherDistanceDuplicatePktBuf, packet.packetID))
   {
-    APP_LOG(TS_OFF, VLEVEL_M, "Standby packet ignored, higher-distance duplicate seen: %u\r\n", packet.packetID);
+    APP_LOG(TS_OFF, VLEVEL_M, "Standby packet ignored, higher-distance duplicate seen: %u/%u\r\n",
+            (uint8_t)(packet.packetID >> 8),
+            (uint8_t)packet.packetID);
     return;
   }
 
@@ -479,7 +497,9 @@ void PacketProcess_ReconfigureAndSubmit(LoRaPacket_t *packet)
   if ((packet->packetType == PACKET_TYPE_DATA) && awaitingWorAck)
   {
     PacketFifo_Push(&awaitingWorDataBuffer, packet);
-    APP_LOG(TS_OFF, VLEVEL_M, "DATA retransmission held until WOR ACK wait clears: %u\r\n", packet->packetID);
+    APP_LOG(TS_OFF, VLEVEL_M, "DATA retransmission held until WOR ACK wait clears: %u/%u\r\n",
+            (uint8_t)(packet->packetID >> 8),
+            (uint8_t)packet->packetID);
     return;
   }
 

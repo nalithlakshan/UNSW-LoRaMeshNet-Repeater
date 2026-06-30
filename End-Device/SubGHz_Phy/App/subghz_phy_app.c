@@ -169,10 +169,10 @@ void SubghzApp_Init(void)
   UTIL_SEQ_RegTask((1U << CFG_SEQ_Task_BTN), 0, PushBtnTask);
 
 
-  // if(nodeType == 'E')
-  // {
-  //   Transmitter_StartPeriodicED();
-  // }
+   if(nodeType == 'E')
+   {
+     Transmitter_StartPeriodicED();
+   }
 
   /* USER CODE END SubghzApp_Init_2 */
 }

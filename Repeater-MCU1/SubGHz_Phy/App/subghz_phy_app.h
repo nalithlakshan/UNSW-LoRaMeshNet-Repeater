@@ -48,7 +48,7 @@ typedef struct NeighbourInfo_s  // To hold any neighbouring node's info
 
 
 #ifndef TX_OUTPUT_POWER   /* please, to change this value, redefine it in USER CODE SECTION */
-#define TX_OUTPUT_POWER                             14        /* dBm */
+#define TX_OUTPUT_POWER                             10        /* dBm (original value =14)*/
 #endif /* TX_OUTPUT_POWER */
 
 #if (( USE_MODEM_LORA == 1 ) && ( USE_MODEM_FSK == 0 ))
@@ -110,6 +110,7 @@ extern char direction;
 void SubghzApp_Init(void);
 
 /* USER CODE BEGIN EFP */
+void SubghzApp_RearmI2cRx(void);
 
 /* USER CODE END EFP */
 

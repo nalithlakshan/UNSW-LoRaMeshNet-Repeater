@@ -189,6 +189,11 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
   }
 }
 
+void SubghzApp_RearmI2cRx(void)
+{
+  HAL_I2C_Slave_Receive_IT(&hi2c2, I2CRxBuffer, MAX_APP_BUFFER_SIZE);
+}
+
 void HAL_I2C_SlaveRxCpltCallback(I2C_HandleTypeDef *hi2c)
 {
     if (hi2c->Instance == I2C2)
@@ -231,7 +236,9 @@ void HAL_I2C_SlaveRxCpltCallback(I2C_HandleTypeDef *hi2c)
           !PacketIDFifo_Search(&upstreamAlreadyForwardedPktBuf, receivedPacket.packetID))
       {
         PacketIDFifo_Push(&upstreamAlreadyForwardedPktBuf, receivedPacket.packetID);
-        APP_LOG(TS_OFF, VLEVEL_M, "Upstream packet already heard forwarded ahead: %u\r\n", receivedPacket.packetID);
+        APP_LOG(TS_OFF, VLEVEL_M, "Upstream packet already heard forwarded ahead: %u/%u\r\n",
+                (uint8_t)(receivedPacket.packetID >> 8),
+                (uint8_t)receivedPacket.packetID);
       }
 #endif
 
@@ -337,6 +344,7 @@ static void WakeIntMcu4Task(void)
   IdleTimer_RestartIfRunning();
 
   APP_LOG(TS_OFF, VLEVEL_M, "\nMCU4 Wake Int Pin Toggled\r\n");
-  HAL_I2C_Slave_Receive_IT(&hi2c2, I2CRxBuffer, MAX_APP_BUFFER_SIZE);
+  MX_I2C2_Init();
+  SubghzApp_RearmI2cRx();
 }
 /* USER CODE END PrFD */

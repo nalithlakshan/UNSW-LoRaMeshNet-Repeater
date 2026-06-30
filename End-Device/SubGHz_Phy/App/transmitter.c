@@ -159,8 +159,29 @@ void Transmitter_TxLoop(void)
             }
             
             // Transmitting the Packet 
-            if(DEBUG_TX){
-                APP_LOG(TS_OFF, VLEVEL_M, "Transmitting packet ID %u\r\n", packetToTransmit.packetID);
+            if(DEBUG_TX)
+            {
+                APP_LOG(TS_OFF, VLEVEL_M, "Transmitting packet ID %u/%u\r\n",
+                        (uint8_t)(packetToTransmit.packetID >> 8),
+                        (uint8_t)packetToTransmit.packetID);
+                
+                if (packetToTransmit.packetType == PACKET_TYPE_DATA)
+                {
+                    MQTT_LOG(TS_OFF, VLEVEL_M, "%c%u transmitting DATA packet: %u/%u\r\n",
+                            nodeType,
+                            nodeID,
+                            (uint8_t)(packetToTransmit.packetID >> 8),
+                            (uint8_t)packetToTransmit.packetID);
+                }
+                else if (packetToTransmit.packetType == PACKET_TYPE_WOR)
+                {
+                    MQTT_LOG(TS_OFF, VLEVEL_M, "%c%u transmitting WOR packet: %u/%u\r\n",
+                            nodeType,
+                            nodeID,
+                            (uint8_t)(packetToTransmit.packetID >> 8),
+                            (uint8_t)packetToTransmit.packetID);
+                }
+                
             }
             Radio.Send(EncodedTxPkt, EncodedTxPktSize);
         }

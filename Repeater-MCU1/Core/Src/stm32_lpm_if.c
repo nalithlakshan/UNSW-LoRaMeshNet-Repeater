@@ -25,6 +25,8 @@
 #include "usart_if.h"
 
 /* USER CODE BEGIN Includes */
+#include "i2c.h"
+#include "subghz_phy_app.h"
 
 /* USER CODE END Includes */
 
@@ -126,6 +128,8 @@ void PWR_ExitStopMode(void)
   /* Resume not retained USARTx and DMA */
   vcom_Resume();
   /* USER CODE BEGIN ExitStopMode_2 */
+  MX_I2C2_Init();
+  SubghzApp_RearmI2cRx();
 
   /* USER CODE END ExitStopMode_2 */
 }

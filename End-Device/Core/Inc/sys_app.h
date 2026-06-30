@@ -69,6 +69,13 @@ extern "C" {
 #endif /* APP_LOG_ENABLED */
 
 /* USER CODE BEGIN EM */
+#if defined (APP_LOG_ENABLED) && (APP_LOG_ENABLED == 1)
+#define MQTT_LOG(TS,VL,...)  do{ {MQTT_Log(TS, VL, __VA_ARGS__);} }while(0);
+#elif defined (APP_LOG_ENABLED) && (APP_LOG_ENABLED == 0) /* APP_LOG disabled */
+#define MQTT_LOG(TS,VL,...)
+#else
+#error "APP_LOG_ENABLED not defined or out of range <0,1>"
+#endif /* APP_LOG_ENABLED */
 
 /* USER CODE END EM */
 
@@ -79,6 +86,7 @@ extern "C" {
 void SystemApp_Init(void);
 
 /* USER CODE BEGIN EFP */
+void MQTT_Log(uint32_t TimeStampState, uint32_t VerboseLevel, const char *strFormat, ...);
 
 /* USER CODE END EFP */
 
