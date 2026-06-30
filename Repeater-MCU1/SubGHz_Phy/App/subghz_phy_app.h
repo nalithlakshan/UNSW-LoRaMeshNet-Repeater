@@ -74,6 +74,8 @@ typedef struct NeighbourInfo_s  // To hold any neighbouring node's info
 
 /* USER CODE BEGIN EC */
 #define MAX_NEIGHBOURS                              32
+#define LORA_PREAMBLE_LENGTH_WOR                    1000      /* WOR preamble symbols */
+#define LORA_PREAMBLE_LENGTH_DATA                   8         /* DATA preamble symbols */
 
 /* USER CODE END EC */
 

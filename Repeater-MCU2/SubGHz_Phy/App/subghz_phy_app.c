@@ -184,6 +184,7 @@ static void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t LoraS
   if (RxBufferSize > MAX_APP_BUFFER_SIZE)
   {
     APP_LOG(TS_OFF, VLEVEL_M, "RX packet too large, size=%u\r\n", RxBufferSize);
+    Radio.Rx(0);
     return;
   }
 
@@ -192,6 +193,7 @@ static void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t LoraS
   if (RxBufferSize < LORA_PACKET_HEADER_SIZE)
   {
     APP_LOG(TS_OFF, VLEVEL_M, "RX packet too short, size=%u\r\n", RxBufferSize);
+    Radio.Rx(0);
     return;
   }
 
@@ -237,12 +239,28 @@ static void OnRxError(void)
 static void PushBtnTask(void)
 {
   APP_LOG(TS_OFF, VLEVEL_M, "Push Button Pressed\r\n");
+  Radio.SetChannel(RF_FREQUENCY);
+  Radio.SetRxConfig(MODEM_LORA, LORA_BANDWIDTH, LORA_SPREADING_FACTOR,
+                    LORA_CODINGRATE, 0, LORA_PREAMBLE_LENGTH,
+                    LORA_SYMBOL_TIMEOUT, LORA_FIX_LENGTH_PAYLOAD_ON, 0,
+                    true, 0, 0, LORA_IQ_INVERSION_ON, true);
+  Radio.SetMaxPayloadLength(MODEM_LORA, MAX_APP_BUFFER_SIZE);
+  Radio.Standby();
+  HAL_Delay(100);
   Radio.Rx(0); // Go to Rx mode to receive on DATA-RP channel
 }
 
 static void WakeIntMcu1TTask(void)
 {
-  APP_LOG(TS_OFF, VLEVEL_M, "Wake interrupt from MCU1\r\n");
+  APP_LOG(TS_OFF, VLEVEL_M, "\nWake interrupt from MCU1\r\n");
+  Radio.SetChannel(RF_FREQUENCY);
+  Radio.SetRxConfig(MODEM_LORA, LORA_BANDWIDTH, LORA_SPREADING_FACTOR,
+                    LORA_CODINGRATE, 0, LORA_PREAMBLE_LENGTH,
+                    LORA_SYMBOL_TIMEOUT, LORA_FIX_LENGTH_PAYLOAD_ON, 0,
+                    true, 0, 0, LORA_IQ_INVERSION_ON, true);
+  Radio.SetMaxPayloadLength(MODEM_LORA, MAX_APP_BUFFER_SIZE);
+  Radio.Standby();
+  HAL_Delay(100);
   Radio.Rx(0); // Go to Rx mode to receive on DATA-RP channel
 }
 

@@ -119,7 +119,12 @@ void Transmitter_TxLoop(void)
 
         // Setting the channel based on packet type
         uint32_t channelFreq = (packetToTransmit.packetType == PACKET_TYPE_DATA) ? RF_FREQUENCY_ED_DATA : RF_FREQUENCY_WOR;
+        uint16_t txPreambleLength = (channelFreq == RF_FREQUENCY_WOR) ? LORA_PREAMBLE_LENGTH_WOR : LORA_PREAMBLE_LENGTH_DATA;
         Radio.SetChannel(channelFreq);
+        Radio.SetTxConfig(MODEM_LORA, TX_OUTPUT_POWER, 0, LORA_BANDWIDTH,
+                          LORA_SPREADING_FACTOR, LORA_CODINGRATE,
+                          txPreambleLength, LORA_FIX_LENGTH_PAYLOAD_ON,
+                          true, 0, 0, LORA_IQ_INVERSION_ON, TX_TIMEOUT_VALUE);
 
         // Encode the packet into a byte buffer for transmission
         EncodedTxPktSize = Packet_Encode(&packetToTransmit, EncodedTxPkt, sizeof(EncodedTxPkt));
