@@ -45,7 +45,7 @@ uint16_t distanceValue = 0; // Distance value to nearest gateway, to be updated 
 uint8_t sequenceNumber = 0;
 
 // Power Management Settings
-const uint32_t MCU1_IDLE_SLEEP_DELAY_MS = 5000U;
+const uint32_t MCU1_IDLE_SLEEP_DELAY_MS = 10000U;
 
 
 // Routing Info
