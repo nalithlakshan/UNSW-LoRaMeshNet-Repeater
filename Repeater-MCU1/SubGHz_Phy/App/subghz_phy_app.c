@@ -38,8 +38,8 @@
 /* USER CODE BEGIN EV */
 
 // Device Info
-uint8_t nodeID = 4;
-char nodeType = 'R';  // 'R' for Repeater, 'E' for End Device, 'G' for Gateway
+uint8_t nodeID = 1;
+char nodeType = 'G';  // 'R' for Repeater, 'E' for End Device, 'G' for Gateway
 double batteryPercentage = 100.0;
 uint16_t distanceValue = 0; // Distance value to nearest gateway, to be updated by routing init
 uint8_t sequenceNumber = 0;
@@ -109,6 +109,8 @@ static void OnRxError(void);
 /* USER CODE BEGIN PFP */
 
 static void PushBtnTask(void);
+static void WakeIntMcu2Task(void);
+static void WakeIntMcu3Task(void);
 static void WakeIntMcu4Task(void);
 
 /* USER CODE END PFP */
@@ -154,6 +156,8 @@ void SubghzApp_Init(void)
   PacketProcess_Init();
   WorAckWait_Init();
   UTIL_SEQ_RegTask((1U << CFG_SEQ_Task_BTN), 0, PushBtnTask);
+  UTIL_SEQ_RegTask((1U << CFG_SEQ_Task_WakeIntMcu2), 0, WakeIntMcu2Task);
+  UTIL_SEQ_RegTask((1U << CFG_SEQ_Task_WakeIntMcu3), 0, WakeIntMcu3Task);
   UTIL_SEQ_RegTask((1U << CFG_SEQ_Task_WakeIntMcu4), 0, WakeIntMcu4Task);
 
   /* Arm I2C Receive */
@@ -187,6 +191,14 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
   {
     UTIL_SEQ_SetTask((1U << CFG_SEQ_Task_WakeIntMcu4), CFG_SEQ_Prio_0);
   }
+  else if (GPIO_Pin == WAKE_INT_MCU3_Pin)
+  {
+    UTIL_SEQ_SetTask((1U << CFG_SEQ_Task_WakeIntMcu3), CFG_SEQ_Prio_0);
+  }
+  else if (GPIO_Pin == WAKE_INT_MCU2_Pin)
+  {
+    UTIL_SEQ_SetTask((1U << CFG_SEQ_Task_WakeIntMcu2), CFG_SEQ_Prio_0);
+  }
 }
 
 void SubghzApp_RearmI2cRx(void)
@@ -200,6 +212,7 @@ void HAL_I2C_SlaveRxCpltCallback(I2C_HandleTypeDef *hi2c)
     {
       // Process received data here
       LoRaPacket_t receivedPacket = Packet_Decode(I2CRxBuffer);
+      HAL_I2C_Slave_Receive_IT(&hi2c2, I2CRxBuffer, MAX_APP_BUFFER_SIZE);
       APP_LOG(TS_OFF, VLEVEL_M, "Received I2C packet: %s\r\n", Packet_To_String(&receivedPacket));
 
       // Ignore packets sent by this repeater's own trasnmitter
@@ -338,6 +351,24 @@ static void PushBtnTask(void)
   PositionLearningInitialBroadcast();
 }
 
+
+static void WakeIntMcu2Task(void)
+{
+  IdleTimer_RestartIfRunning();
+
+  APP_LOG(TS_OFF, VLEVEL_M, "\nMCU2 Wake Int Pin Toggled\r\n");
+  MX_I2C2_Init();
+  SubghzApp_RearmI2cRx();
+}
+
+static void WakeIntMcu3Task(void)
+{
+  IdleTimer_RestartIfRunning();
+
+  APP_LOG(TS_OFF, VLEVEL_M, "\nMCU3 Wake Int Pin Toggled\r\n");
+  MX_I2C2_Init();
+  SubghzApp_RearmI2cRx();
+}
 
 static void WakeIntMcu4Task(void)
 {

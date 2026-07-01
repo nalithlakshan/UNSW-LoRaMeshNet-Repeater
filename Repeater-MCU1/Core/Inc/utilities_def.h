@@ -81,6 +81,8 @@ typedef enum
   CFG_SEQ_Task_LoRaTxLoop,
   CFG_SEQ_Task_LoRaCadScan,
   CFG_SEQ_Task_BTN,
+  CFG_SEQ_Task_WakeIntMcu2,
+  CFG_SEQ_Task_WakeIntMcu3,
   CFG_SEQ_Task_WakeIntMcu4,
   CFG_SEQ_Task_PacketProcess,
   CFG_SEQ_Task_PL3RouteMapping,
