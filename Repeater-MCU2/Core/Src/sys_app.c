@@ -30,7 +30,9 @@
 #include "sys_debug.h"
 
 /* USER CODE BEGIN Includes */
+#include "cad_mode.h"
 #include "radio.h"
+#include "subghz_phy_app.h"
 
 /* USER CODE END Includes */
 
@@ -131,12 +133,17 @@ void UTIL_SEQ_Idle(void)
   {
     return;
   }
-  if (Radio.GetStatus() != RF_IDLE)
+  
+  if (cad_based_operation)
+  {
+    CAD_Mode_StartExtendedStopTimer();
+  }
+  else if(Radio.GetStatus() != RF_IDLE)
   {
     Radio.Sleep();
     APP_LOG(TS_OFF, VLEVEL_M, "Radio Sleeping\r\n");
   }
-
+  
   /* USER CODE END UTIL_SEQ_Idle_1 */
   UTIL_LPM_EnterLowPower();
   /* USER CODE BEGIN UTIL_SEQ_Idle_2 */

@@ -36,10 +36,12 @@
 
 #include "i2c_pkt_transfer.h"
 #include "packet.h"
+#include "cad_mode.h"
 /* USER CODE END Includes */
 
 /* External variables ---------------------------------------------------------*/
 /* USER CODE BEGIN EV */
+bool cad_based_operation = false; // Flag to indicate if CAD-based operation is enabled
 
 /* USER CODE END EV */
 
@@ -106,6 +108,7 @@ static void OnRxError(void);
 
 static void PushBtnTask(void);
 static void WakeIntMcu1TTask(void);
+static void RadioRxOrSleep(void);
 
 /* USER CODE END PFP */
 
@@ -123,6 +126,7 @@ void SubghzApp_Init(void)
   RadioEvents.TxTimeout = OnTxTimeout;
   RadioEvents.RxTimeout = OnRxTimeout;
   RadioEvents.RxError = OnRxError;
+  RadioEvents.CadDone = CAD_Mode_OnCadDone;
 
   Radio.Init(&RadioEvents);
 
@@ -134,6 +138,7 @@ void SubghzApp_Init(void)
                     LORA_CODINGRATE, 0, LORA_PREAMBLE_LENGTH,
                     LORA_SYMBOL_TIMEOUT, LORA_FIX_LENGTH_PAYLOAD_ON, 0,
                     true, 0, 0, LORA_IQ_INVERSION_ON, true);
+  CAD_Mode_ConfigRadio();
   Radio.SetMaxPayloadLength(MODEM_LORA, MAX_APP_BUFFER_SIZE);
   Radio.Sleep();
 
@@ -141,6 +146,9 @@ void SubghzApp_Init(void)
   UTIL_SEQ_RegTask((1U << CFG_SEQ_Task_BTN), 0, PushBtnTask);
   UTIL_SEQ_RegTask((1U << CFG_SEQ_Task_WakeIntMcu1), 0, WakeIntMcu1TTask);
   I2cPktTransfer_Init();
+
+  /* Initiate CAD Mode */
+  CAD_Mode_Init();
 
   /* USER CODE END SubghzApp_Init_2 */
 }
@@ -184,7 +192,7 @@ static void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t LoraS
   if (RxBufferSize > MAX_APP_BUFFER_SIZE)
   {
     APP_LOG(TS_OFF, VLEVEL_M, "RX packet too large, size=%u\r\n", RxBufferSize);
-    Radio.Rx(0);
+    RadioRxOrSleep();
     return;
   }
 
@@ -193,7 +201,7 @@ static void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t LoraS
   if (RxBufferSize < LORA_PACKET_HEADER_SIZE)
   {
     APP_LOG(TS_OFF, VLEVEL_M, "RX packet too short, size=%u\r\n", RxBufferSize);
-    Radio.Rx(0);
+    RadioRxOrSleep();
     return;
   }
 
@@ -202,7 +210,7 @@ static void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t LoraS
   APP_LOG(TS_OFF, VLEVEL_M, "RX done, size=%u, RSSI=%d, SNR=%d, %s\r\n",
           size, rssi, LoraSnr_FskCfo, packetString);
 
-  Radio.Rx(0);
+  RadioRxOrSleep();
   
   if (!I2cPktTransfer_Enqueue(RxTextBuf))
   {
@@ -222,7 +230,7 @@ static void OnRxTimeout(void)
 {
   /* USER CODE BEGIN OnRxTimeout */
   APP_LOG(TS_OFF, VLEVEL_M, "RX timeout\r\n");
-  Radio.Rx(0);
+  RadioRxOrSleep();
   /* USER CODE END OnRxTimeout */
 }
 
@@ -230,7 +238,7 @@ static void OnRxError(void)
 {
   /* USER CODE BEGIN OnRxError */
   APP_LOG(TS_OFF, VLEVEL_M, "RX Error\r\n");
-  Radio.Rx(0);
+  RadioRxOrSleep();
   /* USER CODE END OnRxError */
 }
 
@@ -239,29 +247,55 @@ static void OnRxError(void)
 static void PushBtnTask(void)
 {
   APP_LOG(TS_OFF, VLEVEL_M, "Push Button Pressed\r\n");
-  Radio.SetChannel(RF_FREQUENCY);
-  Radio.SetRxConfig(MODEM_LORA, LORA_BANDWIDTH, LORA_SPREADING_FACTOR,
-                    LORA_CODINGRATE, 0, LORA_PREAMBLE_LENGTH,
-                    LORA_SYMBOL_TIMEOUT, LORA_FIX_LENGTH_PAYLOAD_ON, 0,
-                    true, 0, 0, LORA_IQ_INVERSION_ON, true);
-  Radio.SetMaxPayloadLength(MODEM_LORA, MAX_APP_BUFFER_SIZE);
-  Radio.Standby();
-  HAL_Delay(100);
-  Radio.Rx(0); // Go to Rx mode to receive on DATA-RP channel
+  if(!cad_based_operation)
+  {
+    Radio.SetChannel(RF_FREQUENCY);
+    Radio.SetRxConfig(MODEM_LORA, LORA_BANDWIDTH, LORA_SPREADING_FACTOR,
+                      LORA_CODINGRATE, 0, LORA_PREAMBLE_LENGTH,
+                      LORA_SYMBOL_TIMEOUT, LORA_FIX_LENGTH_PAYLOAD_ON, 0,
+                      true, 0, 0, LORA_IQ_INVERSION_ON, true);
+    Radio.SetMaxPayloadLength(MODEM_LORA, MAX_APP_BUFFER_SIZE);
+    Radio.Standby();
+    HAL_Delay(100);
+    Radio.Rx(0); // Go to Rx mode to receive on DATA-RP channel
+  }
+  else
+  {
+    CAD_Mode_Start();
+  }
 }
 
 static void WakeIntMcu1TTask(void)
 {
   APP_LOG(TS_OFF, VLEVEL_M, "\nWake interrupt from MCU1\r\n");
-  Radio.SetChannel(RF_FREQUENCY);
-  Radio.SetRxConfig(MODEM_LORA, LORA_BANDWIDTH, LORA_SPREADING_FACTOR,
-                    LORA_CODINGRATE, 0, LORA_PREAMBLE_LENGTH,
-                    LORA_SYMBOL_TIMEOUT, LORA_FIX_LENGTH_PAYLOAD_ON, 0,
-                    true, 0, 0, LORA_IQ_INVERSION_ON, true);
-  Radio.SetMaxPayloadLength(MODEM_LORA, MAX_APP_BUFFER_SIZE);
-  Radio.Standby();
-  HAL_Delay(100);
-  Radio.Rx(0); // Go to Rx mode to receive on DATA-RP channel
+  if(!cad_based_operation)
+  {
+    Radio.SetChannel(RF_FREQUENCY);
+    Radio.SetRxConfig(MODEM_LORA, LORA_BANDWIDTH, LORA_SPREADING_FACTOR,
+                      LORA_CODINGRATE, 0, LORA_PREAMBLE_LENGTH,
+                      LORA_SYMBOL_TIMEOUT, LORA_FIX_LENGTH_PAYLOAD_ON, 0,
+                      true, 0, 0, LORA_IQ_INVERSION_ON, true);
+    Radio.SetMaxPayloadLength(MODEM_LORA, MAX_APP_BUFFER_SIZE);
+    Radio.Standby();
+    HAL_Delay(100);
+    Radio.Rx(0); // Go to Rx mode to receive on DATA-RP channel
+  }
+  else
+  {
+    CAD_Mode_Start();
+  }
+}
+
+static void RadioRxOrSleep(void)
+{
+  if (cad_based_operation)
+  {
+    Radio.Sleep();
+  }
+  else
+  {
+    Radio.Rx(0);
+  }
 }
 
 /* USER CODE END PrFD */
