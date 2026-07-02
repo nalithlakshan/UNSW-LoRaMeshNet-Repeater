@@ -3,7 +3,7 @@
 #include <PubSubClient.h>
 
 const char* ssid1 = "UNSW-IoT";
-const char* password1 = "dyf6r66S/FTCCiJUjQ==";
+const char* password1 = "mKGLxytpM93Kf5p6nQ==";
 
 const char* ssid2 = "YN-WiFi";
 const char* password2 = "dimobatta1";

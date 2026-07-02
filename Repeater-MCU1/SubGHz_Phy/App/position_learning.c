@@ -270,7 +270,7 @@ void PL2InitialTransmission(void)
                        (nodeType == 'R') ? PACKET_NODE_TYPE_REPEATER :
                                            PACKET_NODE_TYPE_GATEWAY;
   plPacket.positionLearningMode = 1U;
-  plPacket.preambleSize = LORA_PREAMBLE_LENGTH;
+  plPacket.preambleSize = LORA_PREAMBLE_LENGTH_WOR;
   plPacket.payloadSize = (uint16_t)(4 + ((uint16_t)pl2NeighbourCount * 4));
 
   plPacket.payload[0] = 2U;
@@ -469,7 +469,7 @@ static void PositionLearningInitialBroadcastTimerCb(void *context)
                        (nodeType == 'R') ? PACKET_NODE_TYPE_REPEATER :
                                            PACKET_NODE_TYPE_GATEWAY;;
   plPacket.positionLearningMode = 1; // Set position learning mode flag
-  plPacket.preambleSize = LORA_PREAMBLE_LENGTH;
+  plPacket.preambleSize = LORA_PREAMBLE_LENGTH_WOR;
   plPacket.payloadSize = 3;
   plPacket.payload[0] = 1; // Phase 1 - Initial Broadcast Phase
   plPacket.payload[1] = 0; // Placeholder for RSSI

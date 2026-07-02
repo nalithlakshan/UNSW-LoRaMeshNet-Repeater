@@ -41,7 +41,7 @@
 
 /* External variables ---------------------------------------------------------*/
 /* USER CODE BEGIN EV */
-bool cad_based_operation = false; // Flag to indicate if CAD-based operation is enabled
+bool cad_based_operation = true; // Flag to indicate if CAD-based operation is enabled
 
 /* USER CODE END EV */
 

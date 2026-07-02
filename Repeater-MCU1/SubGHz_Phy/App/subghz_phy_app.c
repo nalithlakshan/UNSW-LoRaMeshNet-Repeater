@@ -38,8 +38,8 @@
 /* USER CODE BEGIN EV */
 
 // Device Info
-uint8_t nodeID = 1;
-char nodeType = 'G';  // 'R' for Repeater, 'E' for End Device, 'G' for Gateway
+uint8_t nodeID = 7;
+char nodeType = 'R';  // 'R' for Repeater, 'E' for End Device, 'G' for Gateway
 double batteryPercentage = 100.0;
 uint16_t distanceValue = 0; // Distance value to nearest gateway, to be updated by routing init
 uint8_t sequenceNumber = 0;

@@ -209,7 +209,7 @@ void Transmitter_StartPeriodicED(void)
     TxPacket.nearestGwID = nearestGatewayID;
     TxPacket.packetType = PACKET_TYPE_WOR;
     TxPacket.direction = PACKET_DIRECTION_UPSTREAM;
-    TxPacket.preambleSize = LORA_PREAMBLE_LENGTH;
+    TxPacket.preambleSize = LORA_PREAMBLE_LENGTH_WOR;
     TxPacket.payloadSize = (uint16_t)strlen(payload);
     memcpy(TxPacket.payload, payload, TxPacket.payloadSize);
 

@@ -77,7 +77,7 @@ typedef struct NeighbourInfo_s  // To hold any neighbouring node's info
 #define TX_OUTPUT_POWER_WOR                         10        /* dBm */
 #define TX_OUTPUT_POWER_DATA                        14        /* dBm */
 #define LORA_PREAMBLE_LENGTH_WOR                    1000      /* WOR preamble symbols */
-#define LORA_PREAMBLE_LENGTH_DATA                   16        /* DATA preamble symbols */
+#define LORA_PREAMBLE_LENGTH_DATA                   100       /* DATA preamble symbols */
 
 /* USER CODE END EC */
 

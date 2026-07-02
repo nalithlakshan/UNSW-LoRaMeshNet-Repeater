@@ -18,10 +18,10 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define CAD_SCAN_PERIOD_MS           8
+#define CAD_SCAN_PERIOD_MS           (LORA_PREAMBLE_LENGTH/2)
 #define CAD_DET_PEAK                 28
 #define CAD_DET_MIN                  14
-#define CAD_RX_TIMEOUT_VALUE         200
+#define CAD_RX_TIMEOUT_VALUE         (100+LORA_PREAMBLE_LENGTH*2)
 #define EXTENDED_CAD_MODE_MS         5000
 
 static UTIL_TIMER_Object_t CadTimer;

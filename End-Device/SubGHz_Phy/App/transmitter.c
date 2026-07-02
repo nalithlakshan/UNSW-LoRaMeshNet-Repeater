@@ -401,7 +401,7 @@ static bool SubmitWorPacket(void)
     packet.packetType = PACKET_TYPE_WOR;
     packet.direction = PACKET_DIRECTION_UPSTREAM;
     packet.positionLearningMode = 0U;
-    packet.preambleSize = LORA_PREAMBLE_LENGTH;
+    packet.preambleSize = LORA_PREAMBLE_LENGTH_WOR;
     packet.payloadSize = 0U;
 
     EdTxState = ED_TX_STATE_TX_WOR;
@@ -451,7 +451,7 @@ static bool SubmitDataPacket(void)
     packet.packetType = PACKET_TYPE_DATA;
     packet.direction = PACKET_DIRECTION_UPSTREAM;
     packet.positionLearningMode = 0U;
-    packet.preambleSize = LORA_PREAMBLE_LENGTH;
+    packet.preambleSize = LORA_PREAMBLE_LENGTH_DATA;
     packet.payloadSize = (uint16_t)payloadSize;
 
     EdTxState = ED_TX_STATE_TX_DATA;
