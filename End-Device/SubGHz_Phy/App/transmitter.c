@@ -173,17 +173,19 @@ void Transmitter_TxLoop(void)
                 
                 if (packetToTransmit.packetType == PACKET_TYPE_DATA)
                 {
-                    MQTT_LOG(TS_OFF, VLEVEL_M, "%c%u transmitting DATA packet: %u/%u\r\n",
+                    MQTT_LOG(TS_OFF, VLEVEL_M, "%c%u transmitting DATA packet to %u: %u/%u\r\n",
                             nodeType,
                             nodeID,
+                            packetToTransmit.rxNodeID,
                             (uint8_t)(packetToTransmit.packetID >> 8),
                             (uint8_t)packetToTransmit.packetID);
                 }
                 else if (packetToTransmit.packetType == PACKET_TYPE_WOR)
                 {
-                    MQTT_LOG(TS_OFF, VLEVEL_M, "%c%u transmitting WOR packet: %u/%u\r\n",
+                    MQTT_LOG(TS_OFF, VLEVEL_M, "%c%u transmitting WOR packet to %u: %u/%u\r\n",
                             nodeType,
                             nodeID,
+                            packetToTransmit.rxNodeID,
                             (uint8_t)(packetToTransmit.packetID >> 8),
                             (uint8_t)packetToTransmit.packetID);
                 }

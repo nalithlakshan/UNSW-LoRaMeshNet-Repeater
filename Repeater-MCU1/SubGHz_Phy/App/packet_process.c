@@ -428,6 +428,17 @@ static void PacketProcess_StandbyTimerCb(void *context)
     return;
   }
 
+  MQTT_LOG(TS_OFF, VLEVEL_M, "%c%u standby recovery: %u/%u\r\n",
+           nodeType,
+           nodeID,
+           (uint8_t)(packet.packetID >> 8),
+           (uint8_t)packet.packetID);
+  APP_LOG(TS_OFF, VLEVEL_M, "%c%u standby recovery: %u/%u\r\n",
+           nodeType,
+           nodeID,
+           (uint8_t)(packet.packetID >> 8),
+           (uint8_t)packet.packetID);
+
   PacketProcess_ReconfigureAndSubmit(&packet);
 }
 
