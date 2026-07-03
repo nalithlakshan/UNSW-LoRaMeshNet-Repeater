@@ -78,6 +78,8 @@ static bool NetworkGraph_IsRoutingNode(uint8_t nodeType);
 static int8_t NetworkGraph_FindNodeIndex(uint8_t nodeID);
 static int8_t NetworkGraph_AddOrUpdateNode(uint8_t nodeID, uint8_t nodeType, uint16_t nodeDistanceValue, bool updateDistanceValue);
 static void NetworkGraph_SetDirectedLink(uint8_t fromIndex, uint8_t toIndex, uint16_t distance);
+static void NetworkGraph_RemoveUnidirectionalLinks(void);
+static void PL3RemoveUnidirectionalNeighbours(void);
 static void NetworkGraph_AddLocalNeighbours(void);
 static void NetworkGraph_AddPL2Packet(const LoRaPacket_t *packet);
 static void NetworkGraph_CalculateShortestPaths(uint8_t sourceIndex, uint32_t distances[NETWORK_GRAPH_MAX_NODES]);
@@ -314,6 +316,9 @@ void PL3RouteMapping(void)
   uint32_t distances[NETWORK_GRAPH_MAX_NODES];
   uint32_t bestDistance;
   bool gatewayFound;
+
+  NetworkGraph_RemoveUnidirectionalLinks();
+  PL3RemoveUnidirectionalNeighbours();
 
 /* For each repeater in the graph, run Dijkstra from that repeater, find the nearest reachable gateway,
  * and update that repeater's graph record. 
@@ -602,6 +607,67 @@ static void NetworkGraph_SetDirectedLink(uint8_t fromIndex, uint8_t toIndex, uin
 }
 
 
+static void NetworkGraph_RemoveUnidirectionalLinks(void)
+{
+  uint8_t fromIndex;
+  uint8_t toIndex;
+
+  for (fromIndex = 0U; fromIndex < NetworkGraph.nodeCount; fromIndex++)
+  {
+    for (toIndex = 0U; toIndex < NetworkGraph.nodeCount; toIndex++)
+    {
+      if ((NetworkGraph.links[fromIndex][toIndex].isValid) &&
+          (!NetworkGraph.links[toIndex][fromIndex].isValid))
+      {
+        NetworkGraph.links[fromIndex][toIndex].isValid = false;
+        NetworkGraph.links[fromIndex][toIndex].distance = 0U;
+      }
+    }
+  }
+}
+
+
+static void PL3RemoveUnidirectionalNeighbours(void)
+{
+  uint8_t readIndex;
+  uint8_t writeIndex = 0U;
+  int8_t localNodeIndex;
+  int8_t neighbourNodeIndex;
+
+  localNodeIndex = NetworkGraph_FindNodeIndex(nodeID);
+  if (localNodeIndex < 0)
+  {
+    NeighbourCount = 0U;
+    memset(Neighbours, 0, sizeof(Neighbours));
+    return;
+  }
+
+  for (readIndex = 0U; readIndex < NeighbourCount; readIndex++)
+  {
+    neighbourNodeIndex = NetworkGraph_FindNodeIndex(Neighbours[readIndex].ID);
+    if ((neighbourNodeIndex < 0) ||
+        (!NetworkGraph.links[localNodeIndex][neighbourNodeIndex].isValid) ||
+        (!NetworkGraph.links[neighbourNodeIndex][localNodeIndex].isValid))
+    {
+      continue;
+    }
+
+    if (writeIndex != readIndex)
+    {
+      Neighbours[writeIndex] = Neighbours[readIndex];
+    }
+    writeIndex++;
+  }
+
+  if (writeIndex < MAX_NEIGHBOURS)
+  {
+    memset(&Neighbours[writeIndex], 0, sizeof(Neighbours[0]) * (MAX_NEIGHBOURS - writeIndex));
+  }
+
+  NeighbourCount = writeIndex;
+}
+
+
 /* Function executed to first add this repeater and its neighbours to the NetworkGraph*/
 static void NetworkGraph_AddLocalNeighbours(void)
 {
@@ -649,6 +715,7 @@ static void NetworkGraph_UpdateLocalRoutingInfo(void)
 {
   uint8_t i;
   int8_t graphNodeIndex;
+  int8_t localNodeIndex;
   uint8_t localNodeType;
   uint8_t localNearestGatewayID;
   uint16_t localDistanceValue;
@@ -661,11 +728,11 @@ static void NetworkGraph_UpdateLocalRoutingInfo(void)
                   (nodeType == 'R') ? PACKET_NODE_TYPE_REPEATER :
                                       PACKET_NODE_TYPE_GATEWAY;
 
-  graphNodeIndex = NetworkGraph_FindNodeIndex(nodeID);
-  if ((graphNodeIndex >= 0) && (NetworkGraph.nodes[graphNodeIndex].hasRouteToGateway))
+  localNodeIndex = NetworkGraph_FindNodeIndex(nodeID);
+  if ((localNodeIndex >= 0) && (NetworkGraph.nodes[localNodeIndex].hasRouteToGateway))
   {
-    nearestGatewayID = NetworkGraph.nodes[graphNodeIndex].nearestGatewayID;
-    distanceValue = NetworkGraph.nodes[graphNodeIndex].distanceValue;
+    nearestGatewayID = NetworkGraph.nodes[localNodeIndex].nearestGatewayID;
+    distanceValue = NetworkGraph.nodes[localNodeIndex].distanceValue;
   }
 
   localNearestGatewayID = nearestGatewayID;
@@ -692,7 +759,10 @@ static void NetworkGraph_UpdateLocalRoutingInfo(void)
 
     Neighbours[i].DistanceValue = NetworkGraph.nodes[graphNodeIndex].distanceValue;
 
-    if ((!NetworkGraph_IsRoutingNode(Neighbours[i].Type)) ||
+    if ((localNodeIndex < 0) ||
+        (!NetworkGraph.links[localNodeIndex][graphNodeIndex].isValid) ||
+        (!NetworkGraph.links[graphNodeIndex][localNodeIndex].isValid) ||
+        (!NetworkGraph_IsRoutingNode(Neighbours[i].Type)) ||
         (!NetworkGraph.nodes[graphNodeIndex].hasRouteToGateway) ||
         (NetworkGraph.nodes[graphNodeIndex].nearestGatewayID != localNearestGatewayID))
     {
