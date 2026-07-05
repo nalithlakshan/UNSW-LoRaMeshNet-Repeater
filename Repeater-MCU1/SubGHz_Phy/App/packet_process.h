@@ -17,7 +17,7 @@ extern "C" {
 #include <stdbool.h>
 #include <stdint.h>
 
-#define MAX_PACKET_FIFO_SIZE 10U
+#define MAX_PACKET_FIFO_SIZE 30U
 
 #define STANDBY_TIMER_MIN_MS 4000U
 #define STANDBY_TIMER_MAX_MS 6000U

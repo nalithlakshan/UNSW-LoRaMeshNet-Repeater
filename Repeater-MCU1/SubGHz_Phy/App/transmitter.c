@@ -29,8 +29,8 @@
 #define DEBUG_TX                     1
 
 #define TX_TIMEOUT_VALUE             3000
-#define TX_BACKOFF_MIN_MS            50U
-#define TX_BACKOFF_MAX_MS            1000U
+#define TX_BACKOFF_MIN_MS            (1+ nodeID * 20U) //50U
+#define TX_BACKOFF_MAX_MS            (1+ nodeID * 20U +5U) //1000U
 
 TransmitBuffer_t Transmit_Buffer = {0};
 bool txLoopRunning = false;
@@ -102,6 +102,12 @@ void Transmitter_TxLoop(void)
             break;
         }
 
+        // Wait till previous transmission is complete
+        while (Radio.GetStatus() != RF_IDLE)
+        {
+            HAL_Delay(10);
+        }
+
         // Setting the channel based on packet type
         uint32_t channelFreq = (packetToTransmit.packetType == PACKET_TYPE_DATA) ? RF_FREQUENCY_RP_DATA : RF_FREQUENCY_WOR;
         uint16_t txPreambleLength = (channelFreq == RF_FREQUENCY_WOR) ? LORA_PREAMBLE_LENGTH_WOR : LORA_PREAMBLE_LENGTH_DATA;
@@ -124,8 +130,9 @@ void Transmitter_TxLoop(void)
             while (!channelFree || (Radio.GetStatus() != RF_IDLE))
             {
                 channelFree = false;
-                uint32_t backoffMs = TX_BACKOFF_MIN_MS + ((uint32_t)rand() % (TX_BACKOFF_MAX_MS - TX_BACKOFF_MIN_MS + 1U));
-                HAL_Delay(backoffMs);
+                // uint32_t backoffMs = TX_BACKOFF_MIN_MS + ((uint32_t)rand() % (TX_BACKOFF_MAX_MS - TX_BACKOFF_MIN_MS + 1U));
+                // HAL_Delay(backoffMs);
+                HAL_Delay(10);
 
                 if (Radio.GetStatus() != RF_IDLE){
                     if(DEBUG_TX){
@@ -144,9 +151,26 @@ void Transmitter_TxLoop(void)
                 }
 
                 channelFree = (!cadActivityDetected && cadResultReady);
-                if(!channelFree && DEBUG_TX){
-                    APP_LOG(TS_OFF, VLEVEL_M, "Channel is Busy!\r\n");
-                }       
+                // if(!channelFree && DEBUG_TX){
+                //     APP_LOG(TS_OFF, VLEVEL_M, "Channel is Busy!\r\n");
+                // }
+                if(channelFree){
+                    uint32_t randomWaitingPeriod = TX_BACKOFF_MIN_MS + ((uint32_t)rand() % (TX_BACKOFF_MAX_MS - TX_BACKOFF_MIN_MS + 1U));
+                    HAL_Delay(randomWaitingPeriod);
+
+                    cadResultReady = false;
+                    Radio.StartCad();
+                    uint32_t cadWaitMs = 0;
+                    while (!cadResultReady && (cadWaitMs < 2000U))
+                    {
+                        HAL_Delay(1);
+                        cadWaitMs++;
+                    }
+                    channelFree = (!cadActivityDetected && cadResultReady);
+                    if(!channelFree && DEBUG_TX){
+                        APP_LOG(TS_OFF, VLEVEL_M, "Channel is Busy, backing off!\r\n");
+                    }
+                }
             }
             
             // Transmitting the Packet 
