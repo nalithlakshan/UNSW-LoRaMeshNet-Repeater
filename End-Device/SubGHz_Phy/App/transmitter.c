@@ -22,6 +22,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#define ED_DATA_BURST_COUNT          5U
 #define TRANSMITTER_PERIOD_MS        30000
 #define WOR_REPLY_WAIT_TIMEOUT_MS    5000U
 #define MAX_PACKET_SIZE              256
@@ -115,6 +116,12 @@ void Transmitter_TxLoop(void)
         if (!packetAvailable)
         {
             break;
+        }
+
+        // Wait till previous transmission is complete
+        while (Radio.GetStatus() != RF_IDLE)
+        {
+            HAL_Delay(10);
         }
 
         // Setting the channel based on packet type
@@ -229,7 +236,10 @@ void Transmitter_OnTxDone(void)
 
     if (EdTxState == ED_TX_STATE_TX_DATA)
     {
-        FinishEdCycle();
+        if (Transmit_Buffer.count == 0U)
+        {
+            FinishEdCycle();
+        }
         return;
     }
 
@@ -285,10 +295,14 @@ void Transmitter_OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t 
         SelectedUpstreamNodeType = packet.txNodeType;
         APP_LOG(TS_OFF, VLEVEL_M, "WOR reply received from node %u\r\n", nextUptreamNodeID);
 
-        if (!SubmitDataPacket())
+        for(int i = 0; i < ED_DATA_BURST_COUNT; i++)
         {
-            APP_LOG(TS_OFF, VLEVEL_M, "DATA submit skipped, transmit buffer full\r\n");
-            FinishEdCycle();
+            if (!SubmitDataPacket())
+            {
+                APP_LOG(TS_OFF, VLEVEL_M, "DATA submit skipped, transmit buffer full\r\n");
+                FinishEdCycle();
+                return;
+            }
         }
         return;
     }

@@ -17,7 +17,7 @@ extern "C" {
 #include <stdbool.h>
 #include <stdint.h>
 
-#define TRANSMIT_BUFFER_MAX_PACKETS 10U
+#define TRANSMIT_BUFFER_MAX_PACKETS 20U
 
 typedef struct
 {
