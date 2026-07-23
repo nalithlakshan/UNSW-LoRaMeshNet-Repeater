@@ -107,7 +107,7 @@ void PWR_EnterStopMode(void)
   /* USER CODE END EnterStopMode_2 */
   HAL_PWREx_EnterSTOP2Mode(PWR_STOPENTRY_WFI);
   /* USER CODE BEGIN EnterStopMode_3 */
-  HAL_GPIO_WritePin(LED2_GPIO_Port, LED2_Pin, GPIO_PIN_SET); // Turn on LED2 to indicate that the system is running
+  // HAL_GPIO_WritePin(LED2_GPIO_Port, LED2_Pin, GPIO_PIN_SET); // Disabled for power measurements
   HAL_GPIO_WritePin(WAKE_MCU3_GPIO_Port, WAKE_MCU3_Pin, GPIO_PIN_SET); // Wake MCU3 when MCU1 is waking up from stop mode
   HAL_GPIO_WritePin(WAKE_MCU2_GPIO_Port, WAKE_MCU2_Pin, GPIO_PIN_SET); // Wake MCU2 when MCU1 is waking up from stop mode
   /* USER CODE END EnterStopMode_3 */
@@ -125,8 +125,7 @@ void PWR_ExitStopMode(void)
     DAC interface USARTx, TIMx, i2Cx, SPIx
     SRAM ctrls, DMAx, DMAMux, AES, RNG, HSEM  */
 
-  /* Resume not retained USARTx and DMA */
-  vcom_Resume();
+  /* Trace USART and its DMA remain disabled for power measurements. */
   /* USER CODE BEGIN ExitStopMode_2 */
   MX_I2C2_Init();
   SubghzApp_RearmI2cRx();

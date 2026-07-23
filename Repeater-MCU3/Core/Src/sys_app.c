@@ -71,12 +71,14 @@ static uint8_t SYS_TimerInitialisedFlag = 0;
   * @param buff to update with timestamp
   * @param size of updated buffer
   */
+#if APP_LOG_ENABLED
 static void TimestampNow(uint8_t *buff, uint16_t *size);
 
 /**
   * @brief  it calls UTIL_ADV_TRACE_VSNPRINTF
   */
 static void tiny_snprintf_like(char *buf, uint32_t maxsize, const char *strFormat, ...);
+#endif
 
 /* USER CODE BEGIN PFP */
 
@@ -98,12 +100,7 @@ void SystemApp_Init(void)
   /* Initializes the SW probes pins and the monitor RF pins via Alternate Function */
   DBG_Init();
 
-  /*Initialize the terminal */
-  UTIL_ADV_TRACE_Init();
-  UTIL_ADV_TRACE_RegisterTimeStampFunction(TimestampNow);
-
-  /*Set verbose LEVEL*/
-  UTIL_ADV_TRACE_SetVerboseLevel(VERBOSE_LEVEL);
+  /* Advanced trace disabled for power measurements. */
 
   /*Init low power manager*/
   UTIL_LPM_Init();
@@ -128,8 +125,7 @@ void SystemApp_Init(void)
 void UTIL_SEQ_Idle(void)
 {
   /* USER CODE BEGIN UTIL_SEQ_Idle_1 */
-  if(HAL_GPIO_ReadPin(BTN_GPIO_EXTI9_GPIO_Port, BTN_GPIO_EXTI9_Pin) == GPIO_PIN_RESET
-  || HAL_GPIO_ReadPin(WAKE_INT_MCU1_GPIO_Port, WAKE_INT_MCU1_Pin) == GPIO_PIN_SET)
+  if(HAL_GPIO_ReadPin(WAKE_INT_MCU1_GPIO_Port, WAKE_INT_MCU1_Pin) == GPIO_PIN_SET)
   {
     return;
   }
@@ -156,6 +152,7 @@ void UTIL_SEQ_Idle(void)
 
 /* Private functions ---------------------------------------------------------*/
 
+#if APP_LOG_ENABLED
 static void TimestampNow(uint8_t *buff, uint16_t *size)
 {
   /* USER CODE BEGIN TimestampNow_1 */
@@ -168,6 +165,7 @@ static void TimestampNow(uint8_t *buff, uint16_t *size)
 
   /* USER CODE END TimestampNow_2 */
 }
+#endif
 
 /* Disable StopMode when traces need to be printed */
 void UTIL_ADV_TRACE_PreSendHook(void)
@@ -192,6 +190,7 @@ void UTIL_ADV_TRACE_PostSendHook(void)
   /* USER CODE END UTIL_LPM_SetStopMode_2 */
 }
 
+#if APP_LOG_ENABLED
 static void tiny_snprintf_like(char *buf, uint32_t maxsize, const char *strFormat, ...)
 {
   /* USER CODE BEGIN tiny_snprintf_like_1 */
@@ -205,6 +204,7 @@ static void tiny_snprintf_like(char *buf, uint32_t maxsize, const char *strForma
 
   /* USER CODE END tiny_snprintf_like_2 */
 }
+#endif
 
 /* USER CODE BEGIN PrFD */
 

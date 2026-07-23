@@ -91,9 +91,9 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
-  MX_DMA_Init();
+  // MX_DMA_Init(); // UART DMA disabled for power measurements
   MX_SubGHz_Phy_Init();
-  MX_USART1_UART_Init();
+  // MX_USART1_UART_Init(); // Trace UART disabled for power measurements
 //  MX_RTC_Init();
   MX_I2C2_Init();
   /* USER CODE BEGIN 2 */

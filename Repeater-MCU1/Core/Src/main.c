@@ -95,17 +95,17 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
-  MX_DMA_Init();
+  // MX_DMA_Init(); // UART DMA disabled for power measurements
   MX_SubGHz_Phy_Init();
-  MX_USART1_UART_Init();
+  // MX_USART1_UART_Init(); // Trace UART disabled for power measurements
   // MX_RTC_Init();
   MX_I2C2_Init();
-  MX_USART2_UART_Init();
+  // MX_USART2_UART_Init(); // ESP-01 UART disabled for power measurements
   /* USER CODE BEGIN 2 */
 
-  HAL_GPIO_WritePin(LED2_GPIO_Port, LED2_Pin, GPIO_PIN_SET); // Turn on LED2 to indicate that the system is running
-  
-  HAL_GPIO_WritePin(LOAD_SWITCH_GPIO_Port, LOAD_SWITCH_Pin, 1);
+  // HAL_GPIO_WritePin(LED2_GPIO_Port, LED2_Pin, GPIO_PIN_SET); // Disabled for power measurements
+
+  HAL_GPIO_WritePin(LOAD_SWITCH_GPIO_Port, LOAD_SWITCH_Pin, GPIO_PIN_RESET); // Keep ESP-01 power off
 
   // HAL_UARTEx_ReceiveToIdle_DMA(&huart1, (uint8_t *) &uart1_rx_dma_buffer, sizeof(uart1_rx_dma_buffer));
   // HAL_UARTEx_ReceiveToIdle_DMA(&huart2, (uint8_t *) &uart2_rx_dma_buffer, sizeof(uart2_rx_dma_buffer));

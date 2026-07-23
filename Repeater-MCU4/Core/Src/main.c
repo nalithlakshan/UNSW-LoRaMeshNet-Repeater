@@ -91,14 +91,14 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
-  MX_DMA_Init();
+  // MX_DMA_Init(); // UART DMA disabled for power measurements
   MX_SubGHz_Phy_Init();
-  MX_USART1_UART_Init();
+  // MX_USART1_UART_Init(); // Trace UART disabled for power measurements
   // MX_RTC_Init();
   MX_I2C2_Init();
   /* USER CODE BEGIN 2 */
 
-  HAL_GPIO_WritePin(LED2_GPIO_Port, LED2_Pin, GPIO_PIN_SET); // Turn on LED2 to indicate that the system is running
+  // HAL_GPIO_WritePin(LED2_GPIO_Port, LED2_Pin, GPIO_PIN_SET); // Disabled for power measurements
 
   /* USER CODE END 2 */
 

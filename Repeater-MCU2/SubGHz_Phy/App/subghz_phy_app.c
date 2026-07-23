@@ -106,7 +106,6 @@ static void OnRxError(void);
 
 /* USER CODE BEGIN PFP */
 
-static void PushBtnTask(void);
 static void WakeIntMcu1TTask(void);
 static void RadioRxOrSleep(void);
 
@@ -143,26 +142,26 @@ void SubghzApp_Init(void)
   Radio.Sleep();
 
   /*  Register Sequencer Tasks */
-  UTIL_SEQ_RegTask((1U << CFG_SEQ_Task_BTN), 0, PushBtnTask);
   UTIL_SEQ_RegTask((1U << CFG_SEQ_Task_WakeIntMcu1), 0, WakeIntMcu1TTask);
   I2cPktTransfer_Init();
 
   /* Initiate CAD Mode */
   CAD_Mode_Init();
 
+  /* MCU1 may already be holding the wake line high when only this MCU is reset. */
+  if (HAL_GPIO_ReadPin(WAKE_INT_MCU1_GPIO_Port, WAKE_INT_MCU1_Pin) == GPIO_PIN_SET)
+  {
+    UTIL_SEQ_SetTask((1U << CFG_SEQ_Task_WakeIntMcu1), CFG_SEQ_Prio_0);
+  }
+
   /* USER CODE END SubghzApp_Init_2 */
 }
 
 /* USER CODE BEGIN EF */
 
-//Push button interrupt handling
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
-  if (GPIO_Pin == BTN_GPIO_EXTI9_Pin)
-  {
-    UTIL_SEQ_SetTask((1U << CFG_SEQ_Task_BTN), CFG_SEQ_Prio_0);
-  }
-  else if (GPIO_Pin == WAKE_INT_MCU1_Pin)
+  if (GPIO_Pin == WAKE_INT_MCU1_Pin)
   {
     UTIL_SEQ_SetTask((1U << CFG_SEQ_Task_WakeIntMcu1), CFG_SEQ_Prio_0);
   }
@@ -181,8 +180,9 @@ static void OnTxDone(void)
 static void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t LoraSnr_FskCfo)
 {
   /* USER CODE BEGIN OnRxDone */
+#if APP_LOG_ENABLED
   LoRaPacket_t receivedPacket;
-  const char *packetString;
+#endif
 
   /* Clear BufferRx*/
   memset(RxTextBuf, 0, MAX_APP_BUFFER_SIZE);
@@ -205,10 +205,11 @@ static void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t LoraS
     return;
   }
 
+#if APP_LOG_ENABLED
   receivedPacket = Packet_Decode(RxTextBuf);
-  packetString = Packet_To_String(&receivedPacket);
   APP_LOG(TS_OFF, VLEVEL_M, "RX done, size=%u, RSSI=%d, SNR=%d, %s\r\n",
-          size, rssi, LoraSnr_FskCfo, packetString);
+          size, rssi, LoraSnr_FskCfo, Packet_To_String(&receivedPacket));
+#endif
 
   RadioRxOrSleep();
   
@@ -243,27 +244,6 @@ static void OnRxError(void)
 }
 
 /* USER CODE BEGIN PrFD */
-
-static void PushBtnTask(void)
-{
-  APP_LOG(TS_OFF, VLEVEL_M, "Push Button Pressed\r\n");
-  if(!cad_based_operation)
-  {
-    Radio.SetChannel(RF_FREQUENCY);
-    Radio.SetRxConfig(MODEM_LORA, LORA_BANDWIDTH, LORA_SPREADING_FACTOR,
-                      LORA_CODINGRATE, 0, LORA_PREAMBLE_LENGTH,
-                      LORA_SYMBOL_TIMEOUT, LORA_FIX_LENGTH_PAYLOAD_ON, 0,
-                      true, 0, 0, LORA_IQ_INVERSION_ON, true);
-    Radio.SetMaxPayloadLength(MODEM_LORA, MAX_APP_BUFFER_SIZE);
-    Radio.Standby();
-    HAL_Delay(100);
-    Radio.Rx(0); // Go to Rx mode to receive on DATA-RP channel
-  }
-  else
-  {
-    CAD_Mode_Start();
-  }
-}
 
 static void WakeIntMcu1TTask(void)
 {

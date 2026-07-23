@@ -11,21 +11,19 @@
 #include "idle_timer.h"
 #include "packet.h"
 #include "radio.h"
+#include "stm32wlxx_hal.h"
 #include "stm32_seq.h"
 #include "stm32_timer.h"
 #include "subghz_phy_app.h"
 #include "sys_app.h"
-#include "usart.h"
 #include "utilities_conf.h"
 #include "utilities_def.h"
 
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #define TRANSMITTER_PERIOD_MS        3000
 #define MAX_PACKET_SIZE              256
-#define TRANSMITTER_UART_BUFFER_SIZE 512
 #define DEBUG_TX                     1
 
 #define TX_TIMEOUT_VALUE             3000
@@ -284,16 +282,10 @@ static void TxTask(void)
     {
         APP_LOG(TS_OFF, VLEVEL_M, "TX counter = %u\r\n", TxCounter);
     }
-    uint8_t UartMsg[TRANSMITTER_UART_BUFFER_SIZE] = {0};
-    const char *packetString;
-
     TxPacket.packetID = (uint16_t)(((uint16_t)nodeID << 8) | TxCounter);
     if (Transmitter_Submit(&TxPacket))
     {
-        packetString = Packet_To_String(&TxPacket);
-        int UartMsgSize = snprintf((char *)UartMsg, sizeof(UartMsg),
-                                   "Node %d: Submitted Packet %s\r\n", nodeID, packetString);
-        HAL_UART_Transmit(&huart2, UartMsg, (uint16_t)UartMsgSize, HAL_MAX_DELAY);
+        /* ESP-01 UART reporting disabled for power measurements. */
     }
     else if (DEBUG_TX)
     {

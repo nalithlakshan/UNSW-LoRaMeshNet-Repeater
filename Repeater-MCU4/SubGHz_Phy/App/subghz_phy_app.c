@@ -105,8 +105,6 @@ static void OnRxError(void);
 
 /* USER CODE BEGIN PFP */
 
-static void PushBtnTask(void);
-
 /* USER CODE END PFP */
 
 /* Exported functions ---------------------------------------------------------*/
@@ -140,7 +138,6 @@ void SubghzApp_Init(void)
   Radio.Sleep();
 
   /*  Register Sequencer Tasks */
-  UTIL_SEQ_RegTask((1U << CFG_SEQ_Task_BTN), 0, PushBtnTask);
   I2cPktTransfer_Init();
 
   /* Initiate CAD Mode */
@@ -150,15 +147,6 @@ void SubghzApp_Init(void)
 }
 
 /* USER CODE BEGIN EF */
-
-//Push button interrupt handling
-void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
-{
-  if (GPIO_Pin == BTN_GPIO_EXTI9_Pin)
-  {
-    UTIL_SEQ_SetTask((1U << CFG_SEQ_Task_BTN), CFG_SEQ_Prio_0);
-  }
-}
 
 /* USER CODE END EF */
 
@@ -174,7 +162,6 @@ static void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t LoraS
 {
   /* USER CODE BEGIN OnRxDone */
   LoRaPacket_t receivedPacket;
-  const char *packetString;
   uint16_t encodedSize;
 
   /* Clear BufferRx*/
@@ -216,9 +203,8 @@ static void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t LoraS
     }
   }
 
-  packetString = Packet_To_String(&receivedPacket);
   APP_LOG(TS_OFF, VLEVEL_M, "RX done, size=%u, RSSI=%d, SNR=%d, %s\r\n",
-          size, rssi, LoraSnr_FskCfo, packetString);
+          size, rssi, LoraSnr_FskCfo, Packet_To_String(&receivedPacket));
 
   Radio.Sleep();
   
@@ -253,10 +239,5 @@ static void OnRxError(void)
 }
 
 /* USER CODE BEGIN PrFD */
-
-static void PushBtnTask(void)
-{
-  APP_LOG(TS_OFF, VLEVEL_M, "Push Button Pressed\r\n");
-}
 
 /* USER CODE END PrFD */

@@ -133,7 +133,7 @@ void PositionLearningReset(void)
 void PositionLearningInitialBroadcast(void)
 {
   positionLearningActive = true;
-  HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_SET); //To indicate PL running
+  // HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_SET); // Disabled for power measurements
   UTIL_TIMER_StartWithPeriod(&PL2StartTimer, PL2_START_TIMEOUT_MS);
 
   if (initialPktCount < MAX_INITIAL_PL_PACKETS)
@@ -167,7 +167,7 @@ void ReceivedPktHanderPL1(LoRaPacket_t *packet)
     positionLearningActive = true;
   }
 
-  HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_SET); //To indicate PL running
+  // HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_SET); // Disabled for power measurements
 
   if ((packet == NULL) || (packet->payloadSize < 3U))
   {
@@ -177,8 +177,9 @@ void ReceivedPktHanderPL1(LoRaPacket_t *packet)
   rssi = (int16_t)(((uint16_t)packet->payload[1] << 8) | packet->payload[2]);
   pl = (double)TX_OUTPUT_POWER - (double)rssi;
   distance = pow(10.0, (pl - pl0)/(10.0 * gamma)) * d0;
-  uint32_t distance_x100 = (uint32_t)(distance * 100.0 + 0.5);
-  APP_LOG(TS_OFF, VLEVEL_M, "PL1| RSSI = %d, Distance = %u.%02u m\r\n",rssi, (unsigned int)(distance_x100 / 100U),(unsigned int)(distance_x100 % 100U));
+  APP_LOG(TS_OFF, VLEVEL_M, "PL1| RSSI = %d, Distance = %u.%02u m\r\n", rssi,
+          (unsigned int)((uint32_t)(distance * 100.0 + 0.5) / 100U),
+          (unsigned int)((uint32_t)(distance * 100.0 + 0.5) % 100U));
 
   neighbourID = packet->txNodeID;
 
@@ -488,8 +489,8 @@ static void PositionLearningInitialBroadcastTimerCb(void *context)
       PacketIDFifo_Push(&repeatedPl1PktIDs, plPacket.packetID); 
       if (DEBUG_PL)
       {
-        const char *packetString = Packet_To_String(&plPacket);
-        APP_LOG(TS_OFF, VLEVEL_M, "Node %d: Submitted Position Learning Broadcast Packet %s\r\n", nodeID, packetString);
+        APP_LOG(TS_OFF, VLEVEL_M, "Node %d: Submitted Position Learning Broadcast Packet %s\r\n",
+                nodeID, Packet_To_String(&plPacket));
       }
     }
     else if (DEBUG_PL)

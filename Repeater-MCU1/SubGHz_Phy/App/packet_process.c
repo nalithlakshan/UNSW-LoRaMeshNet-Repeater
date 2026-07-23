@@ -315,6 +315,7 @@ static void PacketProcess(void)
     // Packet addressed to this repeater OR Broadcast packet:
     if ((packet.rxNodeID == nodeID) || (packet.direction == PACKET_DIRECTION_BROADCAST))
     {
+#if APP_LOG_ENABLED
       if ((nodeType == 'G') && (packet.packetType == PACKET_TYPE_DATA))
       {
         uint16_t payloadSize = packet.payloadSize;
@@ -331,6 +332,7 @@ static void PacketProcess(void)
         APP_LOG(TS_OFF, VLEVEL_M, "GW %u received: %s\r\n", nodeID, payloadText);
         MQTT_LOG(TS_OFF, VLEVEL_M, "GW %u received: %s\r\n", nodeID, payloadText);
       }
+#endif
 
       PacketProcess_ReconfigureAndSubmit(&packet);
 

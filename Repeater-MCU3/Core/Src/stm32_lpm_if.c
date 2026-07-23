@@ -104,7 +104,7 @@ void PWR_EnterStopMode(void)
   /* USER CODE END EnterStopMode_2 */
   HAL_PWREx_EnterSTOP2Mode(PWR_STOPENTRY_WFI);
   /* USER CODE BEGIN EnterStopMode_3 */
-  HAL_GPIO_WritePin(LED2_GPIO_Port, LED2_Pin, GPIO_PIN_SET); // Turn on LED2 to indicate that the system is running
+  // HAL_GPIO_WritePin(LED2_GPIO_Port, LED2_Pin, GPIO_PIN_SET); // Disabled for power measurements
   /* USER CODE END EnterStopMode_3 */
 }
 
@@ -120,8 +120,7 @@ void PWR_ExitStopMode(void)
     DAC interface USARTx, TIMx, i2Cx, SPIx
     SRAM ctrls, DMAx, DMAMux, AES, RNG, HSEM  */
 
-  /* Resume not retained USARTx and DMA */
-  vcom_Resume();
+  /* Trace USART and its DMA remain disabled for power measurements. */
   /* USER CODE BEGIN ExitStopMode_2 */
   MX_I2C2_Init();
 
