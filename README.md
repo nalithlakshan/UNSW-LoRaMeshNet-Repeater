@@ -17,7 +17,7 @@ The development of the **UNSW-LoRaMeshNet** platform was motivated by the follow
 
 2. N. Udugampola, X. Ai, B. Li, H. Gong, and A. Seneviratne, “A position-and energy-aware routing strategy for subterranean LoRa mesh networks,” in *Proc. IEEE 50th Conf. Local Computer Networks (LCN)*, 2025.
 
-3. N. Udugampola, X. Ai, B. Li, H. Gong, and A. Seneviratne, “LoRaMSim: A simulation platform for advanced LoRa mesh networks,” submitted for review.
+3. N. Udugampola, X. Ai, B. Li, H. Gong, and A. Seneviratne, “LoRaMSim: A simulation platform for advanced LoRa mesh networks,” in *Proc. IEEE 104th Vehicular Technology Conference (VTC2026-Fall)*, 2026.
 
-4. N. Udugampola, X. Ai, B. Li, H. Gong, and A. Seneviratne, “Adapting the LoRaWAN Relay Specification for battery-sustainable subterranean LoRa mesh networks,” submitted for review.
+4. N. Udugampola, X. Ai, B. Li, H. Gong, and A. Seneviratne, “Adapting the LoRaWAN Relay Specification for battery-sustainable subterranean LoRa mesh networks,” in *Proc. IEEE 35th Int. Conf. Computer Communications and Networks (ICCCN)*, 2026.
 
